@@ -28,7 +28,10 @@ export function VenueLauncherShell({
               Home
             </span>
           </Link>
-          <HomeVenueChooser venues={venues} currentSlug={currentSlug} />
+          <div className="w-full">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Choose your venue</p>
+            <HomeVenueChooser venues={venues} currentSlug={currentSlug} />
+          </div>
           <div className="hidden md:block h-px my-1 bg-slate-200 dark:bg-slate-700" aria-hidden />
           <div className="ml-auto md:ml-0">
             <Link

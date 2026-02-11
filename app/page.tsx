@@ -4,6 +4,9 @@ import { VenueLauncherShell } from "@/components/home/VenueLauncherShell";
 import { HomeHeroContent } from "@/components/home/HomeHeroContent";
 import { getHomeVenueData } from "@/lib/home-venues";
 
+/** Force server render so venue launcher and cookies work on Vercel. */
+export const dynamic = "force-dynamic";
+
 /**
  * Root route: venue launcher (home with venue chooser). Rendered here to avoid
  * redirect and prevent 404 on edge/static.
