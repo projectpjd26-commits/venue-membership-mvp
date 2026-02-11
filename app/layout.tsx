@@ -3,8 +3,8 @@ import { DemoModeWrapper } from "@/components/demo/DemoModeWrapper";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "COTERI — Membership that drives repeat traffic",
-  description: "COTERI helps venues turn one-time visitors into regulars. One pass, one place to verify.",
+  title: "COTERI — Membership Infrastructure",
+  description: "Payments and verification infrastructure for physical venues.",
 };
 
 export default function RootLayout({
