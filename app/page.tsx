@@ -1,19 +1,22 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import { cookies } from "next/headers";
+import { VenueLauncherShell } from "@/components/home/VenueLauncherShell";
+import { HomeHeroContent } from "@/components/home/HomeHeroContent";
+import { getHomeVenueData } from "@/lib/home-venues";
 
 /**
- * Root route: landing with link to sign-in. Static so / is always served.
+ * Root route: venue launcher (home with venue chooser). Rendered here to avoid
+ * redirect and prevent 404 on edge/static.
  */
-export default function Page() {
+export default async function RootPage() {
+  const cookieStore = await cookies();
+  const { venues, currentSlug } = await getHomeVenueData(cookieStore);
+
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-neutral-950 text-neutral-100">
-      <h1 className="text-2xl font-bold mb-4">COTERI</h1>
-      <p className="mb-6 text-neutral-400">Membership that drives repeat traffic.</p>
-      <Link
-        href="/sign-in"
-        className="rounded-lg bg-white text-neutral-900 px-6 py-3 font-semibold hover:bg-neutral-200 transition"
-      >
-        Sign in
-      </Link>
-    </main>
+    <VenueLauncherShell venues={venues} currentSlug={currentSlug} homeHref="/">
+      <Suspense fallback={<div className="flex-1 flex items-center justify-center p-10 text-slate-500">Loading…</div>}>
+        <HomeHeroContent />
+      </Suspense>
+    </VenueLauncherShell>
   );
 }

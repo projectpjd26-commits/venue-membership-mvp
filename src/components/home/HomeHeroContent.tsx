@@ -3,7 +3,7 @@
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function Home() {
+export function HomeHeroContent() {
   const searchParams = useSearchParams()
   const next = searchParams.get('next')
   const signInHref = next ? `/sign-in?next=${encodeURIComponent(next)}` : '/sign-in'

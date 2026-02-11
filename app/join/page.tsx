@@ -79,9 +79,17 @@ export default async function JoinPage({
                     </button>
                   </form>
                 ) : (
-                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-                    Get a membership at {v.name} to see your pass and rewards here. Visit the venue or contact them to sign up.
-                  </p>
+                  <div className="mt-3 space-y-2">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      Get a membership at {v.name} to see your pass and rewards here.
+                    </p>
+                    <Link
+                      href={`/sign-in?next=${encodeURIComponent(`/join?venue=${encodeURIComponent(v.slug)}`)}`}
+                      className="inline-flex items-center justify-center rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2.5 text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+                    >
+                      Sign in to get membership
+                    </Link>
+                  </div>
                 )}
               </li>
             );

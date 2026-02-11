@@ -51,7 +51,7 @@ function SignInContent() {
     typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '/auth/callback'
 
   const signInWithOAuth = async (provider: OAuthProvider) => {
-    const next = searchParams.get('next')?.trim() || '/dashboard'
+    const next = searchParams.get('next')?.trim() || '/home'
     document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=${60 * 10}; SameSite=Lax`
     setOauthLoading(provider)
     setAuthError(null)
@@ -67,7 +67,7 @@ function SignInContent() {
     e.preventDefault()
     if (!email.trim()) return
     setLoading(true)
-    const next = searchParams.get('next')?.trim() || '/dashboard'
+    const next = searchParams.get('next')?.trim() || '/home'
     document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=${60 * 10}; SameSite=Lax`
     const callbackUrl = getCallbackUrl()
     const { error } = await supabase.auth.signInWithOtp({
@@ -82,7 +82,7 @@ function SignInContent() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6 sm:p-10 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-sm mx-auto text-center mb-8">
-        <Link href="/" className="text-xl font-semibold tracking-tight text-slate-700 dark:text-slate-300 hover:underline">
+        <Link href="/home" className="text-xl font-semibold tracking-tight text-slate-700 dark:text-slate-300 hover:underline">
           COTERI
         </Link>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -179,7 +179,7 @@ function SignInContent() {
       </section>
 
       <p className="mt-8 text-sm text-slate-500 dark:text-slate-400">
-        <Link href="/" className="hover:underline">← Back to home</Link>
+        <Link href="/home" className="hover:underline">← Back to home</Link>
       </p>
     </main>
   )

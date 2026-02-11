@@ -1,43 +1,26 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { HomeVenueChooser } from "@/components/home/HomeVenueChooser";
-import { CURRENT_VENUE_COOKIE, getFallbackVenues } from "@/lib/constants";
-import { createServerSupabase } from "@/lib/supabase-server";
-import { onlyPilotVenues, withDisplayNames } from "@/lib/venues";
 
-export default async function HomeLayout({
+type Venue = { slug: string; name: string };
+
+export function VenueLauncherShell({
+  venues,
+  currentSlug,
   children,
+  homeHref = "/",
 }: {
+  venues: Venue[];
+  currentSlug: string | null;
   children: React.ReactNode;
+  /** Link for "COTERI" / Home - use "/" for root, "/home" for home route */
+  homeHref?: string;
 }) {
-  const cookieStore = await cookies();
-  const currentSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
-
-  let venues = getFallbackVenues();
-  try {
-    const supabase = createServerSupabase(cookieStore, true);
-    const { data: venueRows } = await supabase
-      .from("venues")
-      .select("name, slug")
-      .order("name");
-    if (venueRows && venueRows.length > 0) {
-      const list = venueRows
-        .map((r) => ({ name: String(r?.name ?? ""), slug: String(r?.slug ?? "").trim() }))
-        .filter((v) => v.slug);
-      const normalized = withDisplayNames(list);
-      const filtered = onlyPilotVenues(normalized);
-      if (filtered.length > 0) venues = filtered;
-    }
-  } catch {
-    // use getFallbackVenues() if env missing, DB or RLS fails (e.g. anon on home)
-  }
-
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <aside className="flex-shrink-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 md:min-w-[220px]">
         <div className="flex flex-row md:flex-col items-center md:items-stretch gap-4 p-4 md:p-5">
           <Link
-            href="/"
+            href={homeHref}
             className="flex flex-col md:flex-none focus:outline-none focus:ring-2 focus:ring-slate-400 rounded"
           >
             <span className="text-xl font-semibold tracking-tight">COTERI</span>
