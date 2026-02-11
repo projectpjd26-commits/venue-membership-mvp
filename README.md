@@ -32,8 +32,8 @@ A Next.js membership platform with Supabase authentication, Stripe payments, and
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/projectpjd26-commits/venue-membership-mvp.git
-   cd venue-membership-mvp
+   git clone https://github.com/projectpjd26-commits/coteri.git
+   cd coteri
    ```
 
 2. Install dependencies:
