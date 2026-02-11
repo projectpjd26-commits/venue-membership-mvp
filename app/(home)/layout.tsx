@@ -12,10 +12,10 @@ export default async function HomeLayout({
 }) {
   const cookieStore = await cookies();
   const currentSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
-  const supabase = createServerSupabase(cookieStore, true);
 
   let venues = FALLBACK_VENUES;
   try {
+    const supabase = createServerSupabase(cookieStore, true);
     const { data: venueRows } = await supabase
       .from("venues")
       .select("name, slug")
@@ -29,7 +29,7 @@ export default async function HomeLayout({
       if (filtered.length > 0) venues = filtered;
     }
   } catch {
-    // use FALLBACK_VENUES if DB or RLS fails (e.g. anon on home)
+    // use FALLBACK_VENUES if env missing, DB or RLS fails (e.g. anon on home)
   }
 
   return (

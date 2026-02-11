@@ -68,4 +68,32 @@ Sign-in: `https://your-app.vercel.app/sign-in`
 
 ---
 
+## If you renamed the Vercel project (e.g. to “coteri”)
+
+After renaming, the production URL changes (e.g. to `https://coteri.vercel.app`). Update these so auth and redirects keep working:
+
+1. **Vercel → Project → Settings → Environment Variables**  
+   - Set **`NEXT_PUBLIC_SITE_URL`** to the new URL, e.g. `https://coteri.vercel.app`.
+
+2. **Supabase Dashboard → Authentication → URL Configuration**  
+   - **Site URL:** change to the new URL (e.g. `https://coteri.vercel.app`).  
+   - **Redirect URLs:** add `https://coteri.vercel.app/auth/callback` and remove the old project URL if it’s no longer used.
+
+3. **Redeploy**  
+   Vercel → Deployments → ⋮ on latest → **Redeploy** so the new env and Supabase config are used.
+
+---
+
+## Resolved production issues (reference)
+
+These were fixed in earlier deployments; the codebase is already updated.
+
+| Issue | Cause | Fix in repo |
+|-------|--------|-------------|
+| **Supabase SSR** | `@supabase/auth-helpers-nextjs` exports missing/changed | All auth uses `@supabase/ssr` and `@/lib/supabase-server` / `@/lib/supabaseClient`; legacy package removed. |
+| **Stripe webhooks** | Signature/body handling and header types on Vercel | Webhook uses `await req.text()` for raw body and `(await headers()).get('Stripe-Signature')`; Stripe API version and types aligned. |
+| **Tailwind / middleware** | Custom middleware broke build; Tailwind v4 vs PostCSS mismatch | Root `middleware.ts` removed; `postcss.config.mjs` uses `@tailwindcss/postcss` only. |
+
+---
+
 **Optional:** Custom domain in Vercel (Settings → Domains). Then set that as **Site URL** and add `https://yourdomain.com/auth/callback` in Supabase Redirect URLs.
