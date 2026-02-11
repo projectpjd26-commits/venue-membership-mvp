@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { DashboardMockStats } from "@/components/dashboard/DashboardMockStats";
 import { TierRewardsSection } from "@/components/dashboard/TierRewardsSection";
 import { CURRENT_VENUE_COOKIE } from "@/lib/constants";
+import { allowedVenuesForUser, isDashboardAdmin, isVenueStaffForVenue } from "@/lib/dashboard-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { getMembershipDisplayState } from "@/lib/membership-display-state";
 import { memberDisplayNameFromUser } from "@/lib/user-display-name";
 import { venueDisplayName } from "@/lib/venues";
 
@@ -26,21 +28,46 @@ export default async function DashboardPage({
   }
 
   const memberDisplayName = memberDisplayNameFromUser(user);
+  const isAdmin = isDashboardAdmin(user);
 
   const { data: memberships } = await supabase
     .from("memberships")
-    .select("id, tier, status, venue_id, venues(name, slug, is_demo)")
+    .select("id, tier, status, expires_at, venue_id, venues(name, slug, is_demo)")
     .eq("user_id", user.id);
+  const { data: staffVenuesData } = await supabase
+    .from("venue_staff")
+    .select("venue_id, venues(id, name, slug, is_demo)")
+    .eq("user_id", user.id);
+  type V = { id: string; name: string; slug: string; is_demo?: boolean };
+  const staffVenueList = (staffVenuesData ?? [])
+    .map((s) => (s as unknown as { venues: V | null }).venues)
+    .filter((v): v is V => v != null && (!v.is_demo || isAdmin));
+  const staffVenueIds = staffVenueList.map((v) => v.id);
 
-  const currentSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
+  const fromMemberships = (memberships ?? [])
+    .map((m) => (m as unknown as { venues: V | null }).venues)
+    .filter((v): v is V => v != null && (!v.is_demo || isAdmin));
+  const allowedOptions = allowedVenuesForUser({
+    isAdmin,
+    fromMemberships: fromMemberships.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
+    fromStaff: staffVenueList.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
+  });
+  const allowedSlugs = new Set(allowedOptions.map((v) => v.slug));
+
+  const rawSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
+  const currentSlug = rawSlug?.trim() || null;
   let venue: { id: string } | null = null;
-  if (currentSlug) {
+  if (currentSlug && allowedSlugs.has(currentSlug)) {
     const res = await supabase.from("venues").select("id").eq("slug", currentSlug).maybeSingle();
     venue = res.data ?? null;
   }
-  if (!venue?.id && (memberships?.length ?? 0) > 0) {
-    const first = (memberships as { venue_id?: string }[])[0];
-    if (first?.venue_id) venue = { id: first.venue_id };
+  if (!venue?.id && allowedOptions.length > 0) {
+    const firstSlug = allowedOptions[0].slug;
+    const res = await supabase.from("venues").select("id").eq("slug", firstSlug).maybeSingle();
+    venue = res.data ?? null;
+    if (venue && currentSlug !== firstSlug) {
+      redirect(`/api/set-venue?venue=${encodeURIComponent(firstSlug)}&next=/dashboard`);
+    }
   }
 
   const { data: tierBenefits } =
@@ -52,27 +79,39 @@ export default async function DashboardPage({
           .eq("active", true)
       : { data: null };
 
-  const internalDemoUserIds = (process.env.INTERNAL_DEMO_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const isInternal = isAdmin;
+  const isVenueOwner = !isAdmin && staffVenueIds.length > 0;
 
-  const isInternal = internalDemoUserIds.includes(user.id);
+  const showVenueMembersList = venue?.id && isVenueStaffForVenue({ staffVenueIds, venueId: venue.id });
+  const { data: venueMembersRows } =
+    showVenueMembersList && venue?.id
+      ? await supabase
+          .from("memberships")
+          .select("id, user_id, tier, status, expires_at")
+          .eq("venue_id", venue.id)
+          .order("tier", { ascending: true })
+      : { data: null };
+  const venueMembers = (venueMembersRows ?? []) as { id: string; user_id: string; tier: string; status: string; expires_at?: string | null }[];
 
-  type Row = { id: string; venues: { name: string; slug?: string; is_demo?: boolean } | null; tier: string };
+  type Row = { id: string; venues: { name: string; slug?: string; is_demo?: boolean } | null; tier: string; status: string; expires_at?: string | null };
   const rows = (memberships ?? []) as unknown as Row[];
   const list = rows
     .filter((m) => !m.venues?.is_demo || isInternal)
-    .map((m) => ({
-      id: m.id,
-      venueName: m.venues?.name ?? "—",
-      venueSlug: m.venues?.slug ?? null,
-      tier: m.tier,
-    }));
+    .map((m) => {
+      const display = getMembershipDisplayState({ status: m.status, tier: m.tier, expires_at: m.expires_at });
+      return {
+        id: m.id,
+        venueName: m.venues?.name ?? "—",
+        venueSlug: m.venues?.slug ?? null,
+        tier: m.tier,
+        displayState: display,
+      };
+    });
 
-  // Selected venue from sidebar cookie — all dashboard content is scoped to this venue
+  // Selected venue name (from memberships or allowed staff venues so staff-only owners get a name)
   const selectedVenueName =
     list.find((r) => r.venueSlug === currentSlug)?.venueName ??
+    allowedOptions.find((o) => o.slug === currentSlug)?.name ??
     (currentSlug ? venueDisplayName(currentSlug, "Venue") : null);
   const listSortedBySelected = currentSlug
     ? [...list].sort((a, b) => (a.venueSlug === currentSlug ? -1 : b.venueSlug === currentSlug ? 1 : 0))
@@ -137,147 +176,275 @@ export default async function DashboardPage({
   }
 
   return (
-    <div className="p-6 sm:p-8 md:p-10 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
       {granted === "ok" && (
         <div className="mb-6 p-4 rounded-xl bg-green-500/10 dark:bg-green-500/20 border border-green-500/30 text-green-800 dark:text-green-200 text-sm">
           Membership granted. You can switch venues in the sidebar or go to Pass & QR to see your pass.
         </div>
       )}
-      <div className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-widest" style={{ color: "var(--venue-accent)" }}>
-          Membership that drives repeat traffic
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight" style={{ color: "var(--venue-text)" }}>
-          Dashboard
-        </h1>
-        <p className="mt-1 text-base font-medium" style={{ color: "var(--venue-text)" }}>
-          {memberDisplayName}
-        </p>
-        <p className="mt-0.5 text-sm" style={{ color: "var(--venue-text-muted)" }}>
-          {user.email}
-        </p>
-        {selectedVenueName && (
-          <p className="mt-2 text-sm font-medium" style={{ color: "var(--venue-accent)" }}>
-            Viewing: {selectedVenueName}
-          </p>
-        )}
-      </div>
 
-      <section className="rounded-xl border border-white/10 overflow-hidden" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-        <div className="px-4 py-3 border-b border-white/10">
-          <h2 className="text-sm font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>
-            {selectedVenueName ? `Your membership at ${selectedVenueName}` : "Your membership"}
-          </h2>
-        </div>
-        <ul className="divide-y divide-white/5">
-          {listSortedBySelected.length === 0 ? (
-            <li className="px-4 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <p className="text-sm" style={{ color: "var(--venue-text-muted)" }}>
-                You don&apos;t have a membership yet. Get one at a venue to see your pass, QR code, and activity here.
-              </p>
-              <Link
-                href="/join"
-                className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] focus:ring-offset-2 focus:ring-offset-[var(--venue-bg)] shrink-0"
-                style={{ backgroundColor: "var(--venue-accent)", color: "#0f0f0f" }}
-              >
-                Get membership
-              </Link>
-            </li>
-          ) : (
-            listSortedBySelected.map((r) => {
-              const isSelectedVenue = r.venueSlug === currentSlug;
-              const tierLabel = r.tier.charAt(0).toUpperCase() + r.tier.slice(1);
-              return (
-                <li
-                  key={r.id}
-                  className={`flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4 ${isSelectedVenue ? "border-l-4 border-[var(--venue-accent)]" : ""}`}
-                >
-                  <span className="font-medium" style={{ color: "var(--venue-text)" }}>{memberDisplayName}</span>
-                  <span className="text-sm" style={{ color: "var(--venue-text-muted)" }}>
-                    {tierLabel} at {r.venueName ?? "—"}
-                  </span>
-                  {isSelectedVenue && (
-                    <>
-                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded" style={{ backgroundColor: "var(--venue-accent)", color: "#0f0f0f" }}>Viewing</span>
-                      <Link
-                        href={r.venueSlug ? `/membership?venue=${encodeURIComponent(r.venueSlug)}` : "/membership"}
-                        className="ml-auto text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] rounded px-3 py-1.5"
-                        style={{ color: "var(--venue-accent)" }}
-                      >
-                        View pass & QR →
-                      </Link>
-                    </>
-                  )}
-                  {!isSelectedVenue && (
-                    <span className="ml-auto text-sm" style={{ color: "var(--venue-text-muted)" }}>Switch venue above to view pass</span>
-                  )}
-                  <span className="rounded-full px-2.5 py-0.5 text-xs font-medium capitalize" style={{ backgroundColor: "rgba(212, 168, 83, 0.2)", color: "var(--venue-accent)" }}>{r.tier}</span>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      </section>
-
-      <TierRewardsSection benefitsByTier={tierBenefits ?? undefined} venueName={selectedVenueName ?? undefined} />
-
-      {/* Your activity at this venue: real scan data + placeholders for drinks/rewards */}
-      {selectedVenueName && (
-        <section className="mt-8">
-          <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "var(--venue-accent)" }}>
-            Your activity
-          </p>
-          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--venue-text)" }}>
-            At {selectedVenueName}
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-white/10 p-4" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Door scans today</p>
-              <p className="mt-2 text-2xl font-semibold" style={{ color: "var(--venue-text)" }}>{yourScansToday}</p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--venue-accent)" }}>valid entries</p>
-            </div>
-            <div className="rounded-xl border border-white/10 p-4" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Door scans this week</p>
-              <p className="mt-2 text-2xl font-semibold" style={{ color: "var(--venue-text)" }}>{yourScansThisWeek}</p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--venue-accent)" }}>valid entries</p>
-            </div>
-            <div className="rounded-xl border border-white/10 p-4" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Last scan</p>
-              <p className="mt-2 text-lg font-semibold" style={{ color: "var(--venue-text)" }}>
-                {lastScanAt ? new Date(lastScanAt).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—"}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/10 p-4" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Drinks today</p>
-              <p className="mt-2 text-2xl font-semibold" style={{ color: "var(--venue-text)" }}>{drinksToday}</p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--venue-accent)" }}>This week: {drinksThisWeek}</p>
-            </div>
-            <div className="rounded-xl border border-white/10 p-4" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-              <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Rewards used today</p>
-              <p className="mt-2 text-2xl font-semibold" style={{ color: "var(--venue-text)" }}>{redemptionsToday}</p>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--venue-accent)" }}>This week: {redemptionsThisWeek}</p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-xl border border-white/10 p-4" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
-            <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Data source</p>
-            <p className="mt-1 text-sm" style={{ color: "var(--venue-text)" }}>
-              Scans from door checks. Drinks and rewards from <code className="text-[var(--venue-accent)]">venue_transactions</code> and <code className="text-[var(--venue-accent)]">venue_redemptions</code> when recorded by the venue.
+      {isVenueOwner && selectedVenueName ? (
+        /* Venue owner splash: their venue front and center, links to data, member list */
+        <>
+          <div className="mb-8 text-center md:text-left">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ color: "var(--venue-text)" }}>
+              {selectedVenueName}
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+              Manage your venue
             </p>
           </div>
-        </section>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <Link
+              href="#members"
+              className="group flex flex-col rounded-xl border border-white/10 p-5 transition hover:border-[var(--venue-accent)]/50 hover:bg-white/5"
+              style={{ backgroundColor: "var(--venue-bg-elevated)" }}
+            >
+              <span className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>Members</span>
+              <span className="mt-1 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                {venueMembers.length} {venueMembers.length === 1 ? "member" : "members"}
+              </span>
+              <span className="mt-2 text-sm font-medium group-hover:underline" style={{ color: "var(--venue-accent)" }}>View list →</span>
+            </Link>
+            <Link
+              href="/venue/metrics"
+              className="group flex flex-col rounded-xl border border-white/10 p-5 transition hover:border-[var(--venue-accent)]/50 hover:bg-white/5"
+              style={{ backgroundColor: "var(--venue-bg-elevated)" }}
+            >
+              <span className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>Venue data</span>
+              <span className="mt-1 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                Scans, verifications, activity
+              </span>
+              <span className="mt-2 text-sm font-medium group-hover:underline" style={{ color: "var(--venue-accent)" }}>Open metrics →</span>
+            </Link>
+            <Link
+              href={currentSlug ? `/membership?venue=${encodeURIComponent(currentSlug)}` : "/membership"}
+              className="group flex flex-col rounded-xl border border-white/10 p-5 transition hover:border-[var(--venue-accent)]/50 hover:bg-white/5"
+              style={{ backgroundColor: "var(--venue-bg-elevated)" }}
+            >
+              <span className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>Pass & QR</span>
+              <span className="mt-1 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                Your membership pass
+              </span>
+              <span className="mt-2 text-sm font-medium group-hover:underline" style={{ color: "var(--venue-accent)" }}>View pass →</span>
+            </Link>
+          </div>
+
+          <section id="members" className="scroll-mt-4">
+            <h2 className="text-sm font-medium mb-3" style={{ color: "var(--venue-text-muted)" }}>
+              Members at {selectedVenueName}
+            </h2>
+            <div className="rounded-lg border border-white/10 overflow-hidden" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+              {venueMembers.length === 0 ? (
+                <p className="px-4 py-6 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                  No members yet.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10 text-left">
+                      <th className="px-4 py-2.5 font-medium" style={{ color: "var(--venue-text-muted)" }}>Member</th>
+                      <th className="px-4 py-2.5 font-medium" style={{ color: "var(--venue-text-muted)" }}>Tier</th>
+                      <th className="px-4 py-2.5 font-medium" style={{ color: "var(--venue-text-muted)" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {venueMembers.map((m) => {
+                      const display = getMembershipDisplayState({ status: m.status, tier: m.tier, expires_at: m.expires_at });
+                      return (
+                        <tr key={m.id} className="border-b border-white/5 last:border-0">
+                          <td className="px-4 py-2.5" style={{ color: "var(--venue-text)" }}>Member</td>
+                          <td className="px-4 py-2.5 capitalize" style={{ color: "var(--venue-text)" }}>{m.tier}</td>
+                          <td className="px-4 py-2.5">
+                            <span
+                              className="text-xs px-2 py-0.5 rounded font-medium capitalize"
+                              style={{
+                                backgroundColor: display.badgeColor === "green" ? "rgb(34 197 94 / 0.2)" : display.badgeColor === "orange" ? "rgb(249 115 22 / 0.2)" : display.badgeColor === "red" ? "rgb(239 68 68 / 0.2)" : display.badgeColor === "yellow" ? "rgb(234 179 8 / 0.2)" : "rgb(113 113 122 / 0.2)",
+                                color: display.badgeColor === "green" ? "rgb(34 197 94)" : display.badgeColor === "orange" ? "rgb(249 115 22)" : display.badgeColor === "red" ? "rgb(239 68 68)" : display.badgeColor === "yellow" ? "rgb(234 179 8)" : "rgb(113 113 122)",
+                              }}
+                            >
+                              {display.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
+
+          <form action="/auth/logout" method="post" className="mt-8">
+            <button
+              type="submit"
+              className="rounded-lg border border-white/20 px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] focus:ring-offset-2 focus:ring-offset-[var(--venue-bg)]"
+              style={{ color: "var(--venue-text-muted)" }}
+            >
+              Log out
+            </button>
+          </form>
+        </>
+      ) : (
+        /* Admin / member dashboard: memberships, tier rewards, your activity */
+        <>
+          <div className="mb-6">
+            <h1 className="text-xl font-semibold tracking-tight" style={{ color: "var(--venue-text)" }}>
+              Dashboard
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+              {memberDisplayName}
+              {selectedVenueName && (
+                <> · Viewing {selectedVenueName}</>
+              )}
+            </p>
+          </div>
+
+          <section className="rounded-lg border border-white/10 overflow-hidden" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+            <ul className="divide-y divide-white/5">
+              {listSortedBySelected.length === 0 ? (
+                <li className="px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <p className="text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                    No membership yet. Get one at a venue to see your pass and activity.
+                  </p>
+                  <Link
+                    href="/join"
+                    className="inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] focus:ring-offset-2 focus:ring-offset-[var(--venue-bg)] shrink-0"
+                    style={{ backgroundColor: "var(--venue-accent)", color: "#0f0f0f" }}
+                  >
+                    Get membership
+                  </Link>
+                </li>
+              ) : (
+                listSortedBySelected.map((r) => {
+                  const isSelectedVenue = r.venueSlug === currentSlug;
+                  const tierLabel = r.tier.charAt(0).toUpperCase() + r.tier.slice(1);
+                  const d = r.displayState;
+                  return (
+                    <li
+                      key={r.id}
+                      className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 ${isSelectedVenue ? "border-l-4 border-[var(--venue-accent)]" : ""}`}
+                    >
+                      <span className="text-sm font-medium" style={{ color: "var(--venue-text)" }}>{tierLabel} · {r.venueName ?? "—"}</span>
+                      <span
+                        className="text-xs px-2 py-0.5 rounded font-medium"
+                        style={{
+                          backgroundColor: d.badgeColor === "green" ? "rgb(34 197 94 / 0.2)" : d.badgeColor === "orange" ? "rgb(249 115 22 / 0.2)" : d.badgeColor === "red" ? "rgb(239 68 68 / 0.2)" : d.badgeColor === "yellow" ? "rgb(234 179 8 / 0.2)" : "rgb(113 113 122 / 0.2)",
+                          color: d.badgeColor === "green" ? "rgb(34 197 94)" : d.badgeColor === "orange" ? "rgb(249 115 22)" : d.badgeColor === "red" ? "rgb(239 68 68)" : d.badgeColor === "yellow" ? "rgb(234 179 8)" : "rgb(113 113 122)",
+                        }}
+                      >
+                        {d.label}
+                      </span>
+                      {isSelectedVenue && (
+                        <Link
+                          href={r.venueSlug ? `/membership?venue=${encodeURIComponent(r.venueSlug)}` : "/membership"}
+                          className="ml-auto text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] rounded px-2 py-1"
+                          style={{ color: "var(--venue-accent)" }}
+                        >
+                          Pass & QR →
+                        </Link>
+                      )}
+                      {!isSelectedVenue && (
+                        <span className="ml-auto text-xs" style={{ color: "var(--venue-text-muted)" }}>Switch venue to view pass</span>
+                      )}
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </section>
+
+          <TierRewardsSection benefitsByTier={tierBenefits ?? undefined} venueName={selectedVenueName ?? undefined} />
+
+          {showVenueMembersList && selectedVenueName && (
+            <section className="mt-6">
+              <h2 className="text-sm font-medium mb-3" style={{ color: "var(--venue-text-muted)" }}>
+                Members at {selectedVenueName}
+              </h2>
+              <div className="rounded-lg border border-white/10 overflow-hidden" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+                {venueMembers.length === 0 ? (
+                  <p className="px-4 py-4 text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                    No members yet.
+                  </p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 text-left">
+                        <th className="px-4 py-2.5 font-medium" style={{ color: "var(--venue-text-muted)" }}>Member</th>
+                        <th className="px-4 py-2.5 font-medium" style={{ color: "var(--venue-text-muted)" }}>Tier</th>
+                        <th className="px-4 py-2.5 font-medium" style={{ color: "var(--venue-text-muted)" }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {venueMembers.map((m) => {
+                        const display = getMembershipDisplayState({ status: m.status, tier: m.tier, expires_at: m.expires_at });
+                        return (
+                          <tr key={m.id} className="border-b border-white/5 last:border-0">
+                            <td className="px-4 py-2.5" style={{ color: "var(--venue-text)" }}>Member</td>
+                            <td className="px-4 py-2.5 capitalize" style={{ color: "var(--venue-text)" }}>{m.tier}</td>
+                            <td className="px-4 py-2.5">
+                              <span
+                                className="text-xs px-2 py-0.5 rounded font-medium capitalize"
+                                style={{
+                                  backgroundColor: display.badgeColor === "green" ? "rgb(34 197 94 / 0.2)" : display.badgeColor === "orange" ? "rgb(249 115 22 / 0.2)" : display.badgeColor === "red" ? "rgb(239 68 68 / 0.2)" : display.badgeColor === "yellow" ? "rgb(234 179 8 / 0.2)" : "rgb(113 113 122 / 0.2)",
+                                  color: display.badgeColor === "green" ? "rgb(34 197 94)" : display.badgeColor === "orange" ? "rgb(249 115 22)" : display.badgeColor === "red" ? "rgb(239 68 68)" : display.badgeColor === "yellow" ? "rgb(234 179 8)" : "rgb(113 113 122)",
+                                }}
+                              >
+                                {display.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
+          )}
+
+          {selectedVenueName && (
+            <section className="mt-6">
+              <h2 className="text-sm font-medium mb-3" style={{ color: "var(--venue-text-muted)" }}>
+                Your activity
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-lg border border-white/10 px-3 py-2.5" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Scans today</p>
+                  <p className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>{yourScansToday}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 px-3 py-2.5" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Scans this week</p>
+                  <p className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>{yourScansThisWeek}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 px-3 py-2.5" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Last scan</p>
+                  <p className="text-sm font-semibold truncate" style={{ color: "var(--venue-text)" }}>
+                    {lastScanAt ? new Date(lastScanAt).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 px-3 py-2.5" style={{ backgroundColor: "var(--venue-bg-elevated)" }}>
+                  <p className="text-[10px] uppercase tracking-wide" style={{ color: "var(--venue-text-muted)" }}>Drinks · rewards</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--venue-text)" }}>{drinksToday} · {redemptionsToday}</p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <DashboardMockStats venueName={selectedVenueName ?? undefined} />
+
+          <form action="/auth/logout" method="post" className="mt-6">
+            <button
+              type="submit"
+              className="rounded-lg border border-white/20 px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] focus:ring-offset-2 focus:ring-offset-[var(--venue-bg)]"
+              style={{ color: "var(--venue-text-muted)" }}
+            >
+              Log out
+            </button>
+          </form>
+        </>
       )}
-
-      <DashboardMockStats venueName={selectedVenueName ?? undefined} />
-
-      <form action="/auth/logout" method="post" className="mt-8">
-        <button
-          type="submit"
-          className="rounded-lg border border-white/20 px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] focus:ring-offset-2 focus:ring-offset-[var(--venue-bg)]"
-          style={{ color: "var(--venue-text-muted)" }}
-        >
-          Log out
-        </button>
-      </form>
     </div>
   );
 }

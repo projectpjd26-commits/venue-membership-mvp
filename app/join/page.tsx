@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FALLBACK_VENUES } from "@/lib/constants";
+import { getFallbackVenues, isDemoMode } from "@/lib/constants";
+import { isDashboardAdmin } from "@/lib/dashboard-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
 
 export const metadata = {
@@ -25,11 +26,7 @@ export default async function JoinPage({
     redirect(`/sign-in?next=${encodeURIComponent(nextPath)}`);
   }
 
-  const allowedIds = (process.env.INTERNAL_DEMO_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const canGrantSelf = allowedIds.length > 0 && allowedIds.includes(user.id);
+  const canGrantSelf = isDashboardAdmin(user) && isDemoMode();
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
@@ -54,7 +51,7 @@ export default async function JoinPage({
         </p>
 
         <ul className="mt-8 w-full space-y-4">
-          {FALLBACK_VENUES.map((v) => {
+          {getFallbackVenues().map((v) => {
             const isPreselected = preselectedSlug === v.slug;
             return (
               <li

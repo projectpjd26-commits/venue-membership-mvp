@@ -80,29 +80,27 @@ export function TierRewardsSection({
   const sortedTiers = [...tiers].sort((a, b) => tierOrder(a.tier_key) - tierOrder(b.tier_key));
 
   return (
-    <section className="mt-8">
-      <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: "var(--venue-accent)" }}>
-        What customers get
-      </p>
-      <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--venue-text)" }}>
-        {venueName ? `Membership levels & rewards at ${venueName}` : "Membership levels & rewards"}
+    <section className="mt-6">
+      <h2 className="text-sm font-medium mb-3" style={{ color: "var(--venue-text-muted)" }}>
+        Levels & rewards
       </h2>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         {sortedTiers.map((tier) => (
           <div
             key={tier.tier_key}
-            className="rounded-xl border border-white/10 overflow-hidden"
-            style={{ backgroundColor: "var(--venue-bg-elevated)" }}
+            className="rounded-lg border border-white/10 overflow-hidden"
+            style={{
+              backgroundColor:
+                tier.tier_key === "founder"
+                  ? "rgba(212, 168, 83, 0.08)"
+                  : tier.tier_key === "vip"
+                    ? "rgba(168, 85, 247, 0.08)"
+                    : "rgba(255, 255, 255, 0.06)",
+            }}
           >
-            <div
-              className="px-4 py-3 border-b border-white/10"
-              style={{
-                backgroundColor:
-                  tier.tier_key === "founder" ? "rgba(212, 168, 83, 0.15)" : tier.tier_key === "vip" ? "rgba(168, 85, 247, 0.08)" : undefined,
-              }}
-            >
+            <div className="px-3 py-2 border-b border-white/5">
               <span
-                className="text-sm font-semibold capitalize"
+                className="text-xs font-semibold capitalize"
                 style={{
                   color: tier.tier_key === "founder" ? "var(--venue-accent)" : "var(--venue-text)",
                 }}
@@ -110,20 +108,15 @@ export function TierRewardsSection({
                 {tier.tier_label}
               </span>
             </div>
-            <ul className="px-4 py-3 space-y-2">
+            <ul className="px-3 py-2 space-y-1">
               {tier.benefits.length === 0 ? (
-                <li className="text-sm" style={{ color: "var(--venue-text-muted)" }}>
+                <li className="text-xs" style={{ color: "var(--venue-text-muted)" }}>
                   Member access
                 </li>
               ) : (
                 tier.benefits.map((b) => (
-                  <li key={b.benefit_label} className="text-sm flex flex-col">
-                    <span style={{ color: "var(--venue-text)" }}>{b.benefit_label}</span>
-                    {b.description && (
-                      <span className="text-xs mt-0.5" style={{ color: "var(--venue-text-muted)" }}>
-                        {b.description}
-                      </span>
-                    )}
+                  <li key={b.benefit_label} className="text-xs" style={{ color: "var(--venue-text)" }}>
+                    {b.benefit_label}
                   </li>
                 ))
               )}

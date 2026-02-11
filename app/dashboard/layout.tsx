@@ -2,7 +2,10 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { VenueSwitcher } from "@/components/dashboard/VenueSwitcher";
+
+export const dynamic = "force-dynamic";
 import { CURRENT_VENUE_COOKIE } from "@/lib/constants";
+import { allowedVenuesForUser, getRoleForUser, isDashboardAdmin } from "@/lib/dashboard-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { onlyPilotVenues, withDisplayNames, venueDisplayName } from "@/lib/venues";
 
@@ -19,11 +22,7 @@ export default async function DashboardLayout({
     redirect("/");
   }
 
-  const internalDemoUserIds = (process.env.INTERNAL_DEMO_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const isInternal = internalDemoUserIds.includes(user.id);
+  const isAdmin = isDashboardAdmin(user);
 
   const { data: memberships } = await supabase
     .from("memberships")
@@ -37,20 +36,36 @@ export default async function DashboardLayout({
   type V = { id: string; name: string; slug: string; is_demo?: boolean };
   const fromMemberships = (memberships ?? [])
     .map((m) => (m as unknown as { venues: V | null }).venues)
-    .filter((v): v is V => v != null && (!v.is_demo || isInternal));
+    .filter((v): v is V => v != null && (!v.is_demo || isAdmin));
   const fromStaff = (staffVenues ?? [])
     .map((s) => (s as unknown as { venues: V | null }).venues)
-    .filter((v): v is V => v != null && (!v.is_demo || isInternal));
-  const venueMap = new Map<string | null, V>();
-  fromMemberships.forEach((v) => venueMap.set(v.id, v));
-  fromStaff.forEach((v) => venueMap.set(v.id, v));
-  const allVenues = withDisplayNames(Array.from(venueMap.values()).map((v) => ({ slug: v.slug, name: v.name })));
+    .filter((v): v is V => v != null && (!v.is_demo || isAdmin));
+
+  const allowedOptions = allowedVenuesForUser({
+    isAdmin,
+    fromMemberships: fromMemberships.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
+    fromStaff: fromStaff.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
+  });
+  const allVenues = withDisplayNames(allowedOptions.map((v) => ({ slug: v.slug, name: v.name })));
   const venues = onlyPilotVenues(allVenues);
 
-  const currentSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
-  const currentVenue = currentSlug
-    ? venues.find((v) => v.slug === currentSlug)
-    : venues[0] ?? null;
+  const rawSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
+  const currentSlug = rawSlug?.trim() || null;
+  let currentVenue = currentSlug ? venues.find((v) => v.slug === currentSlug) : venues[0] ?? null;
+  if (currentSlug && !currentVenue && venues.length > 0) {
+    const allowedBySlug = allowedOptions.find((o) => o.slug === currentSlug);
+    if (allowedBySlug) {
+      currentVenue = withDisplayNames([{ slug: allowedBySlug.slug, name: allowedBySlug.name }])[0];
+    } else {
+      redirect(`/api/set-venue?venue=${encodeURIComponent(venues[0].slug)}&next=/dashboard`);
+    }
+  }
+  if (!currentSlug && venues.length > 0) {
+    redirect(`/api/set-venue?venue=${encodeURIComponent(venues[0].slug)}&next=/dashboard`);
+  }
+  if (!currentVenue && venues.length > 0) {
+    currentVenue = venues[0];
+  }
   const displayName =
     currentVenue?.name ??
     (currentSlug ? venueDisplayName(currentSlug, "Venue") : "Venue");
@@ -58,6 +73,9 @@ export default async function DashboardLayout({
   const effectiveSlug = currentVenue?.slug ?? currentSlug ?? null;
   const isFunctionSF = effectiveSlug === "the-function-sf";
   const isStarryPlough = effectiveSlug === "the-starry-plough";
+
+  const hasStaffRows = (staffVenues?.length ?? 0) > 0;
+  const role = getRoleForUser(user, hasStaffRows);
 
   return (
     <div
@@ -70,7 +88,7 @@ export default async function DashboardLayout({
       >
         <div className="flex flex-row md:flex-col items-center md:items-stretch gap-4 p-4 md:p-5 md:min-w-[200px]">
           <Link
-            href="/dashboard"
+            href="/"
             className="flex flex-col md:flex-none focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] focus:ring-offset-2 focus:ring-offset-[var(--venue-bg)] rounded"
           >
             <span className="font-semibold tracking-tight text-lg" style={{ color: "var(--venue-text)" }}>
@@ -80,11 +98,16 @@ export default async function DashboardLayout({
               × {displayName}
             </span>
           </Link>
+          <p className="text-xs font-medium" style={{ color: "var(--venue-text-muted)" }} aria-label="Your role">
+            {role === "admin" && "Logged in as Admin"}
+            {role === "venue_owner" && "Logged in as Venue owner"}
+            {role === "member" && "Logged in as Member"}
+          </p>
           <VenueSwitcher venues={venues} currentSlug={currentVenue?.slug ?? null} />
           <div className="hidden md:block h-px my-1 opacity-20" style={{ backgroundColor: "var(--venue-accent)" }} aria-hidden />
           <nav className="flex md:flex-col gap-1 ml-auto md:ml-0 text-sm">
             <Link
-              href="/dashboard"
+              href="/"
               className="px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] hover:bg-white/5"
               style={{ color: "var(--venue-text-muted)" }}
             >
@@ -104,7 +127,7 @@ export default async function DashboardLayout({
             >
               Pass & QR
             </Link>
-            {isInternal && (
+            {isAdmin && (
               <Link
                 href="/admin"
                 className="px-3 py-2 rounded focus:outline-none focus:ring-2 focus:ring-[var(--venue-accent)] hover:bg-white/5"

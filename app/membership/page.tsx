@@ -6,7 +6,7 @@ import { MembershipViewMockupsLeft } from "@/components/membership/MembershipVie
 import { MembershipViewMockupsRight } from "@/components/membership/MembershipViewMockups";
 import { StartDemoButton } from "@/components/demo/StartDemoButton";
 import { HomeVenueChooser } from "@/components/home/HomeVenueChooser";
-import { CURRENT_VENUE_COOKIE, FALLBACK_VENUES } from "@/lib/constants";
+import { CURRENT_VENUE_COOKIE, getFallbackVenues } from "@/lib/constants";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { onlyPilotVenues, withDisplayNames, venueDisplayName } from "@/lib/venues";
 
@@ -22,7 +22,7 @@ export default async function MembershipPage({
   const { venue: venueParam } = await searchParams;
   const preferredSlug = venueParam?.trim() ?? cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
 
-  const supabase = createServerSupabase(cookieStore, false);
+  const supabase = createServerSupabase(cookieStore, true);
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -117,7 +117,7 @@ export default async function MembershipPage({
   }
 
   // Venue list for switcher (same as home: only pilot venues, no placeholders)
-  let venuesList = FALLBACK_VENUES;
+  let venuesList = getFallbackVenues();
   try {
     const { data: venueRows } = await supabase.from('venues').select('name, slug').order('name');
     if (venueRows?.length) {
@@ -127,7 +127,7 @@ export default async function MembershipPage({
       if (filtered.length > 0) venuesList = filtered;
     }
   } catch {
-    // keep FALLBACK_VENUES
+    // keep getFallbackVenues()
   }
 
   const isActive = !!membership

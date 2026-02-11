@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { HomeVenueChooser } from "@/components/home/HomeVenueChooser";
-import { CURRENT_VENUE_COOKIE, FALLBACK_VENUES } from "@/lib/constants";
+import { CURRENT_VENUE_COOKIE, getFallbackVenues } from "@/lib/constants";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { onlyPilotVenues, withDisplayNames } from "@/lib/venues";
 
@@ -13,7 +13,7 @@ export default async function HomeLayout({
   const cookieStore = await cookies();
   const currentSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
 
-  let venues = FALLBACK_VENUES;
+  let venues = getFallbackVenues();
   try {
     const supabase = createServerSupabase(cookieStore, true);
     const { data: venueRows } = await supabase
@@ -29,7 +29,7 @@ export default async function HomeLayout({
       if (filtered.length > 0) venues = filtered;
     }
   } catch {
-    // use FALLBACK_VENUES if env missing, DB or RLS fails (e.g. anon on home)
+    // use getFallbackVenues() if env missing, DB or RLS fails (e.g. anon on home)
   }
 
   return (

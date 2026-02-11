@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { Session, User } from "@supabase/supabase-js";
+import { isDashboardAdmin } from "@/lib/dashboard-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { isDemoMode } from "@/lib/constants";
 
 export interface AuthResult {
   data?: { user: User; session: Session };
@@ -28,20 +30,20 @@ export async function requireAuth(): Promise<AuthResult> {
   return { data: { user: session.user, session } };
 }
 
-const DEMO_ADMIN_IDS = (process.env.INTERNAL_DEMO_USER_IDS ?? "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
 /**
- * Require authentication and membership in INTERNAL_DEMO_USER_IDS (demo admin).
- * Returns 401 if not signed in, 403 if not in the allowed list.
+ * Require authentication and admin (PERMANENT_ADMINS by email or INTERNAL_DEMO_USER_IDS by id).
+ * When IS_DEMO_MODE is not true, returns 404 so demo-only routes are disabled in production.
+ * Returns 401 if not signed in, 403 if not admin, 404 if demo mode is off.
  */
 export async function requireDemoAdmin(): Promise<AuthResult> {
+  if (!isDemoMode()) {
+    return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  }
+
   const result = await requireAuth();
   if (result.error) return result;
 
-  if (DEMO_ADMIN_IDS.length === 0 || !DEMO_ADMIN_IDS.includes(result.data!.user.id)) {
+  if (!isDashboardAdmin(result.data!.user)) {
     return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
 

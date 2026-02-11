@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { isDemoMode } from "@/lib/constants";
+import { isDashboardAdmin } from "@/lib/dashboard-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
 
 export const metadata = {
@@ -22,11 +24,7 @@ export default async function AdminPage({
     redirect("/sign-in?next=/admin");
   }
 
-  const allowedIds = (process.env.INTERNAL_DEMO_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (allowedIds.length === 0 || !allowedIds.includes(user.id)) {
+  if (!isDashboardAdmin(user)) {
     redirect("/dashboard");
   }
 
@@ -49,7 +47,9 @@ export default async function AdminPage({
           Manage access
         </h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Grant membership at a venue or reset demo data (memberships + verification events for demo venues only).
+          {isDemoMode()
+            ? "Grant membership at a venue or reset demo data (memberships + verification events for demo venues only)."
+            : "Admin access. Demo grant and reset are disabled in production."}
         </p>
 
         {granted === "ok" && (
@@ -63,49 +63,53 @@ export default async function AdminPage({
           </div>
         )}
 
-        <section className="mt-8 p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30">
-          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">
-            Grant membership
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-            Grant yourself an active membership at a pilot venue. You can also use the <Link href="/join" className="font-medium text-slate-700 dark:text-slate-300 underline">Get membership</Link> page.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <form action="/api/internal/demo-grant-membership?next=/admin" method="post">
-              <button
-                type="submit"
-                className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                Grant: The Function SF
-              </button>
-            </form>
-            <form action="/api/internal/demo-grant-membership?venue=the-starry-plough&next=/admin" method="post">
-              <button
-                type="submit"
-                className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-              >
-                Grant: The Starry Plough
-              </button>
-            </form>
-          </div>
-        </section>
+        {isDemoMode() && (
+          <>
+            <section className="mt-8 p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30">
+              <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">
+                Grant membership
+              </h2>
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                Grant yourself an active membership at a pilot venue. You can also use the <Link href="/join" className="font-medium text-slate-700 dark:text-slate-300 underline">Get membership</Link> page.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <form action="/api/internal/demo-grant-membership?next=/admin" method="post">
+                  <button
+                    type="submit"
+                    className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Grant: The Function SF
+                  </button>
+                </form>
+                <form action="/api/internal/demo-grant-membership?venue=the-starry-plough&next=/admin" method="post">
+                  <button
+                    type="submit"
+                    className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800/50 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Grant: The Starry Plough
+                  </button>
+                </form>
+              </div>
+            </section>
 
-        <section className="mt-6 p-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-900/10">
-          <h2 className="text-sm font-medium text-amber-800 dark:text-amber-200 uppercase tracking-wide mb-3">
-            Demo reset
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-            Remove your demo venue memberships and verification events. Use &quot;Grant membership&quot; above to get access again.
-          </p>
-          <form action="/api/internal/demo-reset" method="post">
-            <button
-              type="submit"
-              className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-900/30 px-4 py-2.5 text-sm font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50"
-            >
-              Run demo reset
-            </button>
-          </form>
-        </section>
+            <section className="mt-6 p-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-900/10">
+              <h2 className="text-sm font-medium text-amber-800 dark:text-amber-200 uppercase tracking-wide mb-3">
+                Demo reset
+              </h2>
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                Remove your demo venue memberships and verification events. Use &quot;Grant membership&quot; above to get access again.
+              </p>
+              <form action="/api/internal/demo-reset" method="post">
+                <button
+                  type="submit"
+                  className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-100 dark:bg-amber-900/30 px-4 py-2.5 text-sm font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/50"
+                >
+                  Run demo reset
+                </button>
+              </form>
+            </section>
+          </>
+        )}
 
         <p className="mt-8 text-xs text-slate-500 dark:text-slate-400">
           See <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">docs/CEO-MEMBERSHIP-ACCESS.md</code> for full details.

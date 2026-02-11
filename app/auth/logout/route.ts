@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { USER_ROLE_COOKIE } from "@/lib/constants";
 import { createServerSupabase } from "@/lib/supabase-server";
 
 const REDIRECT = () =>
@@ -22,6 +23,7 @@ function clearAuthCookies(cookieStore: Awaited<ReturnType<typeof cookies>>) {
   for (const name of names) {
     cookieStore.set(name, "", { path: "/", maxAge: 0 });
   }
+  cookieStore.set(USER_ROLE_COOKIE, "", { path: "/", maxAge: 0 });
 }
 
 /** GET: clear auth cookies and redirect. Use when refresh token is invalid so you can clear session without calling Supabase. */
@@ -37,8 +39,8 @@ export async function POST() {
     const supabase = createServerSupabase(cookieStore);
     await supabase.auth.signOut();
   } catch {
-    // Invalid refresh token etc. — still clear our auth cookies so the user isn't stuck
-    clearAuthCookies(cookieStore);
+    // Invalid refresh token etc. — still clear so the user isn't stuck
   }
+  clearAuthCookies(cookieStore);
   return REDIRECT();
 }

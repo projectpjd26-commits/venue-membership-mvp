@@ -51,7 +51,7 @@ function SignInContent() {
     typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : '/auth/callback'
 
   const signInWithOAuth = async (provider: OAuthProvider) => {
-    const next = searchParams.get('next')?.trim() || '/internal/demo'
+    const next = searchParams.get('next')?.trim() || '/dashboard'
     document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=${60 * 10}; SameSite=Lax`
     setOauthLoading(provider)
     setAuthError(null)
@@ -67,7 +67,7 @@ function SignInContent() {
     e.preventDefault()
     if (!email.trim()) return
     setLoading(true)
-    const next = searchParams.get('next')?.trim() || '/internal/demo'
+    const next = searchParams.get('next')?.trim() || '/dashboard'
     document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=${60 * 10}; SameSite=Lax`
     const callbackUrl = getCallbackUrl()
     const { error } = await supabase.auth.signInWithOtp({

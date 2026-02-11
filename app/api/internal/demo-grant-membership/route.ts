@@ -63,7 +63,7 @@ export async function POST(request: Request) {
   const redirectPath =
     nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
       ? `${nextPath}${nextPath.includes("?") ? "&" : "?"}granted=ok`
-      : "/internal/demo?granted=ok";
+      : "/dashboard?granted=ok";
   // If redirecting to dashboard and we have a venue slug, set venue cookie first so dashboard shows the new venue
   if (resolvedSlug && redirectPath.startsWith("/dashboard")) {
     const setVenueUrl = new URL("/api/set-venue", origin);

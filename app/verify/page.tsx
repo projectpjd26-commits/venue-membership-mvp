@@ -2,36 +2,191 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifySignedPayload } from "@/lib/verify-signed-payload";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { VerifyForm } from "./verify-form";
 
 const VERIFY_RESULT_COOKIE = "verify_result";
+const VERIFY_LAST_AT_COOKIE = "verify_last_at";
 const COOKIE_OPTIONS = { path: "/verify", httpOnly: true, sameSite: "lax" as const, maxAge: 60 };
+const RATE_LIMIT_MS = 1000;
 
-type VerifyResult =
-  | { status: "valid"; tier: string; membershipId: string }
-  | { status: "invalid" };
+export type VerifyApiResult = {
+  result: "VALID" | "EXPIRED" | "INVALID";
+  tier: string | null;
+  venue: string;
+  lastVerifiedAt: string | null;
+  expiresAt: string | null;
+  verifiedAt: string;
+  rateLimited?: boolean;
+};
 
-async function verifyMembershipAction(formData: FormData): Promise<VerifyResult> {
+async function resolveMembershipResult(
+  supabase: ReturnType<typeof createServerSupabase>,
+  staffVenueId: string,
+  membershipIdOrUserId: string,
+  byUserId: boolean
+): Promise<VerifyApiResult | null> {
+  const venueNameRes = await supabase
+    .from("venues")
+    .select("name")
+    .eq("id", staffVenueId)
+    .maybeSingle();
+  const venueName = (venueNameRes.data as { name?: string } | null)?.name ?? "—";
+
+  if (byUserId) {
+    const { data: membership } = await supabase
+      .from("memberships")
+      .select("id, tier, status, expires_at")
+      .eq("user_id", membershipIdOrUserId)
+      .eq("venue_id", staffVenueId)
+      .maybeSingle();
+    if (!membership) {
+      return {
+        result: "INVALID",
+        tier: null,
+        venue: venueName,
+        lastVerifiedAt: null,
+        expiresAt: null,
+        verifiedAt: new Date().toISOString(),
+      };
+    }
+    const status = (membership as { status?: string }).status ?? "";
+    const expiresAt = (membership as { expires_at?: string | null }).expires_at ?? null;
+    const now = Date.now();
+    const expiredAtMs = expiresAt ? new Date(expiresAt).getTime() : null;
+    const isExpired =
+      status === "expired" || (expiredAtMs !== null && expiredAtMs <= now);
+
+    if (isExpired) {
+      const { data: lastRow } = await supabase
+        .from("verification_events")
+        .select("occurred_at")
+        .eq("membership_id", membership.id)
+        .order("occurred_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lastVerifiedAt = (lastRow as { occurred_at?: string } | null)?.occurred_at ?? null;
+      return {
+        result: "EXPIRED",
+        tier: (membership as { tier?: string }).tier ?? null,
+        venue: venueName,
+        lastVerifiedAt,
+        expiresAt,
+        verifiedAt: new Date().toISOString(),
+      };
+    }
+    const { data: lastRow } = await supabase
+      .from("verification_events")
+      .select("occurred_at")
+      .eq("membership_id", membership.id)
+      .order("occurred_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const lastVerifiedAt = (lastRow as { occurred_at?: string } | null)?.occurred_at ?? null;
+    return {
+      result: "VALID",
+      tier: (membership as { tier?: string }).tier ?? null,
+      venue: venueName,
+      lastVerifiedAt,
+      expiresAt,
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+
+  const { data: membership } = await supabase
+    .from("memberships")
+    .select("id, tier, status, expires_at")
+    .eq("id", membershipIdOrUserId)
+    .eq("venue_id", staffVenueId)
+    .maybeSingle();
+
+  if (!membership) {
+    return {
+      result: "INVALID",
+      tier: null,
+      venue: venueName,
+      lastVerifiedAt: null,
+      expiresAt: null,
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+
+  const status = (membership as { status?: string }).status ?? "";
+  const expiresAt = (membership as { expires_at?: string | null }).expires_at ?? null;
+  const now = Date.now();
+  const expiredAtMs = expiresAt ? new Date(expiresAt).getTime() : null;
+  const isExpired =
+    status === "expired" || (expiredAtMs !== null && expiredAtMs <= now);
+
+  const { data: lastRow } = await supabase
+    .from("verification_events")
+    .select("occurred_at")
+    .eq("membership_id", membership.id)
+    .order("occurred_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const lastVerifiedAt = (lastRow as { occurred_at?: string } | null)?.occurred_at ?? null;
+
+  if (isExpired) {
+    return {
+      result: "EXPIRED",
+      tier: (membership as { tier?: string }).tier ?? null,
+      venue: venueName,
+      lastVerifiedAt,
+      expiresAt,
+      verifiedAt: new Date().toISOString(),
+    };
+  }
+  return {
+    result: "VALID",
+    tier: (membership as { tier?: string }).tier ?? null,
+    venue: venueName,
+    lastVerifiedAt,
+    expiresAt,
+    verifiedAt: new Date().toISOString(),
+  };
+}
+
+export async function verifyMembershipAction(
+  _prev: VerifyApiResult | null,
+  formData: FormData
+): Promise<VerifyApiResult> {
   "use server";
 
   const cookieStore = await cookies();
-  cookieStore.set(VERIFY_RESULT_COOKIE, "", { ...COOKIE_OPTIONS, maxAge: 0 });
-
   const payload = formData.get("payload");
   const rawPayload = typeof payload === "string" ? payload : "";
-  if (typeof payload !== "string") {
-    const result: VerifyResult = { status: "invalid" };
-    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(result), COOKIE_OPTIONS);
-    return result;
+  const now = Date.now();
+  const lastAtRaw = cookieStore.get(VERIFY_LAST_AT_COOKIE)?.value;
+  const lastAt = lastAtRaw ? parseInt(lastAtRaw, 10) : 0;
+  const prevResultRaw = cookieStore.get(VERIFY_RESULT_COOKIE)?.value;
+
+  if (rawPayload && now - lastAt < RATE_LIMIT_MS && prevResultRaw) {
+    try {
+      const prev = JSON.parse(prevResultRaw) as VerifyApiResult;
+      return { ...prev, rateLimited: true };
+    } catch {
+      // fall through
+    }
   }
+
+  cookieStore.set(VERIFY_LAST_AT_COOKIE, String(now), COOKIE_OPTIONS);
+  cookieStore.set(VERIFY_RESULT_COOKIE, "", { ...COOKIE_OPTIONS, maxAge: 0 });
 
   const supabase = createServerSupabase(cookieStore);
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) {
-    const result: VerifyResult = { status: "invalid" };
-    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(result), COOKIE_OPTIONS);
-    return result;
+    const out: VerifyApiResult = {
+      result: "INVALID",
+      tier: null,
+      venue: "—",
+      lastVerifiedAt: null,
+      expiresAt: null,
+      verifiedAt: new Date().toISOString(),
+    };
+    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(out), COOKIE_OPTIONS);
+    return out;
   }
 
   const ALLOWED_VERIFY_ROLES = ["staff", "manager", "owner"] as const;
@@ -46,48 +201,93 @@ async function verifyMembershipAction(formData: FormData): Promise<VerifyResult>
     !staffRecord.role ||
     !ALLOWED_VERIFY_ROLES.includes(staffRecord.role as (typeof ALLOWED_VERIFY_ROLES)[number])
   ) {
-    const result: VerifyResult = { status: "invalid" };
-    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(result), COOKIE_OPTIONS);
-    return result;
+    const out: VerifyApiResult = {
+      result: "INVALID",
+      tier: null,
+      venue: "—",
+      lastVerifiedAt: null,
+      expiresAt: null,
+      verifiedAt: new Date().toISOString(),
+    };
+    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(out), COOKIE_OPTIONS);
+    return out;
   }
 
-  let extracted: string;
+  let extracted: string | null = null;
+  let byUserId = false;
   if (rawPayload.startsWith("v2:")) {
     const parsed = verifySignedPayload(rawPayload);
-    if (
-      !parsed ||
-      parsed.venueId !== staffRecord.venue_id
-    ) {
-      const result: VerifyResult = { status: "invalid" };
-      cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(result), COOKIE_OPTIONS);
-      return result;
+    if (!parsed || parsed.venueId !== staffRecord.venue_id) {
+      const out: VerifyApiResult = {
+        result: "INVALID",
+        tier: null,
+        venue: "—",
+        lastVerifiedAt: null,
+        expiresAt: null,
+        verifiedAt: new Date().toISOString(),
+      };
+      cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(out), COOKIE_OPTIONS);
+      return out;
     }
     extracted = parsed.membershipId;
   } else if (rawPayload.startsWith("membership:")) {
     extracted = rawPayload.slice("membership:".length).trim();
   } else {
-    const result: VerifyResult = { status: "invalid" };
-    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(result), COOKIE_OPTIONS);
-    return result;
+    const out: VerifyApiResult = {
+      result: "INVALID",
+      tier: null,
+      venue: "—",
+      lastVerifiedAt: null,
+      expiresAt: null,
+      verifiedAt: new Date().toISOString(),
+    };
+    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(out), COOKIE_OPTIONS);
+    return out;
   }
 
-  const { data: membership } = await supabase
-    .from("memberships")
-    .select("id, tier")
-    .eq("id", extracted)
-    .eq("venue_id", staffRecord.venue_id)
-    .eq("status", "active")
-    .maybeSingle();
+  if (!extracted) {
+    const out: VerifyApiResult = {
+      result: "INVALID",
+      tier: null,
+      venue: "—",
+      lastVerifiedAt: null,
+      expiresAt: null,
+      verifiedAt: new Date().toISOString(),
+    };
+    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(out), COOKIE_OPTIONS);
+    return out;
+  }
 
-  const result: VerifyResult = membership
-    ? { status: "valid", tier: membership.tier ?? "Member", membershipId: membership.id }
-    : { status: "invalid" };
+  // Form payload is always membership id (from v2: or membership:uuid); URL user_id is handled in page.
+  byUserId = false;
+
+  const apiResult = await resolveMembershipResult(
+    supabase,
+    staffRecord.venue_id,
+    extracted,
+    byUserId
+  );
+  if (!apiResult) {
+    const out: VerifyApiResult = {
+      result: "INVALID",
+      tier: null,
+      venue: "—",
+      lastVerifiedAt: null,
+      expiresAt: null,
+      verifiedAt: new Date().toISOString(),
+    };
+    cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(out), COOKIE_OPTIONS);
+    return out;
+  }
+
+  const auditResult =
+    apiResult.result === "VALID" ? "valid" : apiResult.result === "EXPIRED" ? "expired" : "invalid";
+  const membershipId = apiResult.result !== "INVALID" ? extracted : null;
 
   let flagReason: string | null = null;
   let flagScore: number | null = null;
   try {
-    const windowSec = 120;
-    const since = new Date(Date.now() - windowSec * 1000).toISOString();
+    const since = new Date(Date.now() - 120 * 1000).toISOString();
     const { data: recent } = await supabase
       .from("verification_events")
       .select("occurred_at, result")
@@ -98,51 +298,43 @@ async function verifyMembershipAction(formData: FormData): Promise<VerifyResult>
     const nowMs = Date.now();
     const burstWindowMs = 60 * 1000;
     const inBurstWindow = events.filter(
-      (e) => new Date(e.occurred_at).getTime() >= nowMs - burstWindowMs
+      (e: { occurred_at: string }) => new Date(e.occurred_at).getTime() >= nowMs - burstWindowMs
     );
-    const invalidInWindow = events.filter((e) => e.result === "invalid");
-    const BURST_THRESHOLD = 10;
-    const INVALID_THRESHOLD = 5;
-    if (inBurstWindow.length >= BURST_THRESHOLD) {
+    const invalidInWindow = events.filter((e: { result: string }) => e.result === "invalid" || e.result === "expired");
+    if (inBurstWindow.length >= 10) {
       flagReason = "burst_attempts";
       flagScore = 60;
     }
-    if (invalidInWindow.length >= INVALID_THRESHOLD) {
-      if (flagScore === null || 70 > flagScore) {
-        flagReason = "repeated_invalids";
-        flagScore = 70;
-      }
+    if (invalidInWindow.length >= 5 && (flagScore === null || 70 > flagScore)) {
+      flagReason = "repeated_invalids";
+      flagScore = 70;
     }
   } catch {
-    // Heuristics advisory only; skip on failure.
+    // ignore
   }
 
   try {
     await supabase.from("verification_events").insert({
       staff_user_id: session.user.id,
       venue_id: staffRecord.venue_id,
-      membership_id: membership?.id ?? null,
-      result: result.status,
+      membership_id: membershipId,
+      result: auditResult,
       raw_payload: rawPayload,
-      ...(flagReason != null && flagScore != null
-        ? { flag_reason: flagReason, flag_score: flagScore }
-        : {}),
+      ...(flagReason != null && flagScore != null ? { flag_reason: flagReason, flag_score: flagScore } : {}),
     });
   } catch {
-    // Audit insert must not affect UX; ignore failures.
+    // audit must not affect UX
   }
 
-  cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(result), COOKIE_OPTIONS);
-  return result;
+  cookieStore.set(VERIFY_RESULT_COOKIE, JSON.stringify(apiResult), COOKIE_OPTIONS);
+  return apiResult;
 }
 
-function parseResultCookie(value: string | undefined): VerifyResult | null {
+function parseResultCookie(value: string | undefined): VerifyApiResult | null {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value) as VerifyResult;
-    if (parsed.status === "valid" && "tier" in parsed && "membershipId" in parsed)
-      return parsed;
-    if (parsed.status === "invalid") return parsed;
+    const parsed = JSON.parse(value) as VerifyApiResult;
+    if (parsed.result && parsed.venue !== undefined) return parsed;
   } catch {
     // ignore
   }
@@ -180,21 +372,18 @@ export default async function VerifyPage({
     redirect("/");
   }
 
-  // When staff scans the dashboard QR they land on /verify?user_id=... — resolve and show result (no cookie set during render)
   const rawParams = await Promise.resolve(searchParams);
   const userIdParam = typeof rawParams.user_id === "string" ? rawParams.user_id.trim() : "";
-  let result: VerifyResult | null = parseResultCookie(cookieStore.get(VERIFY_RESULT_COOKIE)?.value);
+  let result: VerifyApiResult | null = parseResultCookie(cookieStore.get(VERIFY_RESULT_COOKIE)?.value);
+
   if (userIdParam && UUID_REGEX.test(userIdParam)) {
-    const { data: membership } = await supabase
-      .from("memberships")
-      .select("id, tier")
-      .eq("user_id", userIdParam)
-      .eq("venue_id", staffRecord.venue_id)
-      .eq("status", "active")
-      .maybeSingle();
-    result = membership
-      ? { status: "valid", tier: membership.tier ?? "Member", membershipId: membership.id }
-      : { status: "invalid" };
+    const apiResult = await resolveMembershipResult(
+      supabase,
+      staffRecord.venue_id,
+      userIdParam,
+      true
+    );
+    result = apiResult ?? result;
   }
 
   const venueName =
@@ -205,45 +394,13 @@ export default async function VerifyPage({
       : "—";
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Member Verification</h1>
-
-      <p>
-        Venue: <strong>{venueName}</strong>
-      </p>
-
-      <p>
-        Role: <strong>{staffRecord.role}</strong>
-      </p>
-
-      <hr />
-
-      <p>This device is authorized to verify memberships.</p>
-
-      <form action={(formData: FormData) => verifyMembershipAction(formData).then(() => {})}>
-        <input
-          type="text"
-          name="payload"
-          placeholder="membership:<uuid>"
-          style={{ marginRight: 8, padding: 6, minWidth: 320 }}
-        />
-        <button type="submit">Verify Membership</button>
-      </form>
-
-      {result?.status === "valid" && (
-        <p style={{ marginTop: 16, color: "green", fontWeight: 600 }}>
-          VALID MEMBER
-          <br />
-          <span style={{ fontWeight: 400 }}>Tier: {result.tier}</span>
-          <br />
-          <span style={{ fontWeight: 400 }}>Membership ID: {result.membershipId}</span>
-        </p>
-      )}
-      {result?.status === "invalid" && (
-        <p style={{ marginTop: 16, color: "crimson", fontWeight: 600 }}>
-          INVALID OR EXPIRED MEMBERSHIP
-        </p>
-      )}
-    </main>
+    <div className="flex flex-col min-h-screen" style={{ minHeight: "100dvh" }}>
+      <VerifyForm
+        initialResult={result}
+        venueName={venueName}
+        staffRole={staffRecord.role}
+        verifyAction={verifyMembershipAction}
+      />
+    </div>
   );
 }

@@ -84,6 +84,24 @@ After renaming, the production URL changes (e.g. to `https://coteri.vercel.app`)
 
 ---
 
+## Force alias assignment (recommended)
+
+To make **coteri.vercel.app** point at a specific deployment (e.g. the latest production build):
+
+1. **From repo root**, with [Vercel CLI](https://vercel.com/docs/cli) installed (`npm i -g vercel`):
+   ```bash
+   vercel alias set <deployment-url> coteri.vercel.app
+   ```
+2. **Get `<deployment-url>`** from Vercel → **Deployments** → copy the deployment URL (e.g. `coteri-kc5yt9qeb-phil-boekelheides-projects.vercel.app`).
+3. **Example:**
+   ```bash
+   vercel alias set coteri-kc5yt9qeb-phil-boekelheides-projects.vercel.app coteri.vercel.app
+   ```
+
+Run this after each production deploy if you want the custom alias to always point at the latest deployment, or use Vercel’s default “Production” assignment from the main branch.
+
+---
+
 ## Resolved production issues (reference)
 
 These were fixed in earlier deployments; the codebase is already updated.

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { CURRENT_VENUE_COOKIE, VENUE_SLUG_REGEX, VENUE_SLUG_MAX_LENGTH } from "@/lib/constants";
+import { allowedVenueSlugs, isDashboardAdmin } from "@/lib/dashboard-auth";
+import { createServerSupabase } from "@/lib/supabase-server";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
@@ -11,9 +13,37 @@ function safeRedirectPath(next: string | null): string {
   return "/dashboard";
 }
 
+type VenueRow = { id: string; name: string; slug: string; is_demo?: boolean };
+
+async function getAllowedSlugs(cookieStore: Awaited<ReturnType<typeof cookies>>): Promise<Set<string> | null> {
+  const supabase = createServerSupabase(cookieStore, true);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const isAdmin = isDashboardAdmin(user);
+  const { data: memberships } = await supabase
+    .from("memberships")
+    .select("venue_id, venues(id, name, slug, is_demo)")
+    .eq("user_id", user.id);
+  const { data: staffVenues } = await supabase
+    .from("venue_staff")
+    .select("venue_id, venues(id, name, slug, is_demo)")
+    .eq("user_id", user.id);
+  const fromMemberships = (memberships ?? [])
+    .map((m) => (m as unknown as { venues: VenueRow | null }).venues)
+    .filter((v): v is VenueRow => v != null && (!v.is_demo || isAdmin));
+  const fromStaff = (staffVenues ?? [])
+    .map((s) => (s as unknown as { venues: VenueRow | null }).venues)
+    .filter((v): v is VenueRow => v != null && (!v.is_demo || isAdmin));
+  return allowedVenueSlugs({
+    isAdmin,
+    fromMemberships: fromMemberships.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
+    fromStaff: fromStaff.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
+  });
+}
+
 /**
  * GET ?venue=slug&next=/path — sets cookie and redirects to next (default /dashboard).
- * Used by internal demo venue links.
+ * When authenticated, only allows slugs the user may access (admins: all; venue owners: only their venue(s)).
  */
 export async function GET(request: NextRequest) {
   const cookieStore = await cookies();
@@ -23,20 +53,23 @@ export async function GET(request: NextRequest) {
 
   const sanitized =
     slug && VENUE_SLUG_REGEX.test(slug) && slug.length <= VENUE_SLUG_MAX_LENGTH ? slug : null;
-  if (sanitized) {
-    cookieStore.set(CURRENT_VENUE_COOKIE, sanitized, {
+  const allowed = sanitized ? await getAllowedSlugs(cookieStore) : null;
+  const maySet = !!sanitized && (allowed === null || allowed.has(sanitized));
+  if (maySet) {
+    cookieStore.set(CURRENT_VENUE_COOKIE, sanitized!, {
       path: "/",
       httpOnly: false,
       sameSite: "lax",
       maxAge: COOKIE_MAX_AGE,
     });
   }
+  // When slug is not allowed, do not clear the cookie — redirect with current cookie so user stays on previous venue instead of bouncing to "first" venue.
 
   const path = safeRedirectPath(nextParam);
   const origin = request.headers.get("x-forwarded-host")
     ? `${request.headers.get("x-forwarded-proto") ?? "https"}://${request.headers.get("x-forwarded-host")}`
     : new URL(request.url).origin;
-  return NextResponse.redirect(`${origin}${path}`);
+  return NextResponse.redirect(`${origin}${path}`, 303);
 }
 
 /**
@@ -66,14 +99,18 @@ export async function POST(request: Request) {
 
   const sanitized =
     slug && VENUE_SLUG_REGEX.test(slug) && slug.length <= VENUE_SLUG_MAX_LENGTH ? slug : null;
-  if (sanitized) {
-    cookieStore.set(CURRENT_VENUE_COOKIE, sanitized, {
+  const allowed = sanitized ? await getAllowedSlugs(cookieStore) : null;
+  const maySet = !!sanitized && (allowed === null || allowed.has(sanitized));
+  if (maySet) {
+    cookieStore.set(CURRENT_VENUE_COOKIE, sanitized!, {
       path: "/",
       httpOnly: false, // so client can read for theme if needed
       sameSite: "lax",
       maxAge: COOKIE_MAX_AGE,
     });
-  } else if (slug !== undefined) {
+  }
+  // When slug is not allowed, do not clear the cookie — user keeps current venue instead of bouncing to first in list.
+  if (!sanitized && slug !== undefined) {
     cookieStore.delete(CURRENT_VENUE_COOKIE);
   }
 
@@ -95,5 +132,5 @@ export async function POST(request: Request) {
   const origin = request.headers.get("x-forwarded-host")
     ? `${request.headers.get("x-forwarded-proto") ?? "https"}://${request.headers.get("x-forwarded-host")}`
     : new URL(request.url).origin;
-  return NextResponse.redirect(`${origin}${path}`);
+  return NextResponse.redirect(`${origin}${path}`, 303);
 }
