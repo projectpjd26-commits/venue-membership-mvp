@@ -76,3 +76,69 @@ WHERE result = 'valid'
 GROUP BY venue_id, (occurred_at AT TIME ZONE 'UTC')::date, extract(hour FROM (occurred_at AT TIME ZONE 'UTC'));
 
 COMMENT ON VIEW public.venue_daily_hourly_scans IS 'Valid scans per venue per day (UTC) and hour. For heatmap and peak-hour intelligence.';
+
+-- ========== Pilot data layer: staff metrics, fraud ratios, utilization, revenue ==========
+CREATE OR REPLACE VIEW public.venue_staff_verification_metrics AS
+SELECT
+  venue_id,
+  staff_user_id,
+  count(*)::int AS total_scans,
+  count(*) FILTER (WHERE result = 'valid')::int AS valid_count,
+  count(*) FILTER (WHERE result IN ('invalid', 'expired'))::int AS invalid_count,
+  count(*) FILTER (WHERE flag_reason IS NOT NULL)::int AS flagged_count,
+  round(
+    (count(*) FILTER (WHERE result IN ('invalid', 'expired'))::numeric / nullif(count(*)::numeric, 0)) * 100,
+    1
+  ) AS invalid_ratio_pct,
+  round(
+    (count(*) FILTER (WHERE flag_reason IS NOT NULL)::numeric / nullif(count(*)::numeric, 0)) * 100,
+    1
+  ) AS flagged_ratio_pct
+FROM public.verification_events
+GROUP BY venue_id, staff_user_id;
+
+CREATE OR REPLACE VIEW public.venue_scan_fraud_ratios AS
+SELECT
+  venue_id,
+  date_trunc('day', occurred_at)::date AS day,
+  count(*)::int AS total_scans,
+  count(*) FILTER (WHERE result = 'valid')::int AS approved_scans,
+  count(*) FILTER (WHERE result IN ('invalid', 'expired'))::int AS denied_scans,
+  count(*) FILTER (WHERE flag_reason IS NOT NULL)::int AS flagged_scans,
+  round(
+    (count(*) FILTER (WHERE result IN ('invalid', 'expired'))::numeric / nullif(count(*)::numeric, 0)) * 100,
+    1
+  ) AS invalid_ratio_pct,
+  round(
+    (count(*) FILTER (WHERE flag_reason IS NOT NULL)::numeric / nullif(count(*)::numeric, 0)) * 100,
+    1
+  ) AS flagged_ratio_pct
+FROM public.verification_events
+GROUP BY venue_id, date_trunc('day', occurred_at);
+
+CREATE OR REPLACE VIEW public.venue_membership_utilization AS
+SELECT
+  v.id AS venue_id,
+  (SELECT count(*)::int FROM public.memberships m WHERE m.venue_id = v.id) AS total_members,
+  (SELECT count(DISTINCT e.membership_id)::int
+   FROM public.verification_events e
+   WHERE e.venue_id = v.id AND e.result = 'valid' AND e.occurred_at >= now() - interval '7 days'
+  ) AS members_with_scan_7d,
+  round(
+    (SELECT count(DISTINCT e.membership_id)::numeric
+     FROM public.verification_events e
+     WHERE e.venue_id = v.id AND e.result = 'valid' AND e.occurred_at >= now() - interval '7 days'
+    ) / nullif((SELECT count(*)::numeric FROM public.memberships m WHERE m.venue_id = v.id), 0) * 100,
+    1
+  ) AS utilization_7d_pct
+FROM public.venues v;
+
+CREATE OR REPLACE VIEW public.venue_revenue_by_tier AS
+SELECT
+  t.venue_id,
+  coalesce(m.tier, 'no_membership') AS tier,
+  coalesce(sum(t.amount_cents), 0)::bigint AS revenue_cents,
+  count(*)::int AS tx_count
+FROM public.venue_transactions t
+LEFT JOIN public.memberships m ON m.id = t.membership_id
+GROUP BY t.venue_id, coalesce(m.tier, 'no_membership');

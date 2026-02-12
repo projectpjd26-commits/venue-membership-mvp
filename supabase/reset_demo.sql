@@ -36,28 +36,29 @@ VALUES
 ON CONFLICT (user_id, venue_id) DO NOTHING;
 
 -- 4. Re-insert verification_events (valid + invalid, some flagged)
--- Coffee: high volume, mostly valid
+-- Rule: always reuse a real membership_id (no NULL).
+-- Coffee: high volume, mostly valid; invalid rows still reference a real (active) membership
 INSERT INTO public.verification_events (occurred_at, staff_user_id, venue_id, membership_id, result, raw_payload, flag_reason, flag_score)
 SELECT
   (now() - (n || ' hours')::interval)::timestamptz,
   '11111111-1111-4111-8111-111111111111',
   'd1000001-0000-4000-8000-000000000001',
-  CASE WHEN n % 5 = 0 THEN NULL ELSE (SELECT id FROM public.memberships WHERE venue_id = 'd1000001-0000-4000-8000-000000000001' AND status = 'active' LIMIT 1) END,
+  (SELECT id FROM public.memberships WHERE venue_id = 'd1000001-0000-4000-8000-000000000001' AND status = 'active' ORDER BY created_at LIMIT 1 OFFSET (n % 3)),
   CASE WHEN n % 5 = 0 THEN 'invalid' ELSE 'valid' END,
-  CASE WHEN n % 5 = 0 THEN 'membership:00000000-0000-0000-0000-000000000000' ELSE 'membership:' || (SELECT id FROM public.memberships WHERE venue_id = 'd1000001-0000-4000-8000-000000000001' LIMIT 1)::text END,
+  'membership:' || (SELECT id FROM public.memberships WHERE venue_id = 'd1000001-0000-4000-8000-000000000001' AND status = 'active' ORDER BY created_at LIMIT 1 OFFSET (n % 3))::text,
   NULL,
   NULL
 FROM generate_series(0, 168) AS n;
 
--- Coffee: flagged events
+-- Coffee: flagged events (real membership_id)
 INSERT INTO public.verification_events (occurred_at, staff_user_id, venue_id, membership_id, result, raw_payload, flag_reason, flag_score)
 SELECT
   (now() - (n || ' hours')::interval)::timestamptz,
   '22222222-2222-4222-8222-222222222222',
   'd1000001-0000-4000-8000-000000000001',
-  NULL,
+  (SELECT id FROM public.memberships WHERE venue_id = 'd1000001-0000-4000-8000-000000000001' AND status = 'active' LIMIT 1),
   'invalid',
-  'membership:00000000-0000-0000-0000-000000000000',
+  'membership:' || (SELECT id FROM public.memberships WHERE venue_id = 'd1000001-0000-4000-8000-000000000001' LIMIT 1)::text,
   'repeated_invalids',
   70
 FROM generate_series(12, 14) AS n;
@@ -75,13 +76,13 @@ SELECT
   NULL
 FROM generate_series(24, 120) AS n;
 
--- Nightlife: burst + flagged
+-- Nightlife: burst + flagged (real membership_id)
 INSERT INTO public.verification_events (occurred_at, staff_user_id, venue_id, membership_id, result, raw_payload, flag_reason, flag_score)
 SELECT
   (now() - (n || ' minutes')::interval)::timestamptz,
   '33333333-3333-4333-8333-333333333333',
   'd1000003-0000-4000-8000-000000000003',
-  NULL,
+  (SELECT id FROM public.memberships WHERE venue_id = 'd1000003-0000-4000-8000-000000000003' LIMIT 1 OFFSET (n % 2)),
   'invalid',
   'membership:invalid-paste',
   'burst_attempts',

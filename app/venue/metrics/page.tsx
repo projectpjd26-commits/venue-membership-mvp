@@ -178,6 +178,73 @@ export default async function VenueMetricsPage() {
     // view may not exist yet
   }
 
+  type FraudRatioRow = { day: string; total_scans: number; invalid_ratio_pct: number | null; flagged_ratio_pct: number | null };
+  let fraudToday: FraudRatioRow | null = null;
+  let fraud7dInvalidPct: number | null = null;
+  let fraud7dFlaggedPct: number | null = null;
+  try {
+    const todayStr = now.toISOString().slice(0, 10);
+    const { data: fraudRows } = await supabase
+      .from("venue_scan_fraud_ratios")
+      .select("day, total_scans, invalid_ratio_pct, flagged_ratio_pct")
+      .eq("venue_id", venueId)
+      .gte("day", sevenDaysAgo.slice(0, 10));
+    const list = (fraudRows ?? []) as FraudRatioRow[];
+    fraudToday = list.find((r) => String(r.day).slice(0, 10) === todayStr) ?? null;
+    if (list.length > 0) {
+      const totalScans = list.reduce((s, r) => s + r.total_scans, 0);
+      const { data: events } = await supabase
+        .from("verification_events")
+        .select("result, flag_reason")
+        .eq("venue_id", venueId)
+        .gte("occurred_at", sevenDaysAgo);
+      const eventsList = events ?? [];
+      const invalid7d = eventsList.filter((e) => e.result === "invalid" || e.result === "expired").length;
+      const flagged7d = eventsList.filter((e) => e.flag_reason != null).length;
+      fraud7dInvalidPct = totalScans > 0 ? Math.round((invalid7d / totalScans) * 1000) / 10 : null;
+      fraud7dFlaggedPct = totalScans > 0 ? Math.round((flagged7d / totalScans) * 1000) / 10 : null;
+    }
+  } catch {
+    // view may not exist yet
+  }
+
+  type UtilizationRow = { total_members: number; members_with_scan_7d: number; utilization_7d_pct: number | null };
+  let utilization: UtilizationRow | null = null;
+  try {
+    const { data: u } = await supabase
+      .from("venue_membership_utilization")
+      .select("total_members, members_with_scan_7d, utilization_7d_pct")
+      .eq("venue_id", venueId)
+      .maybeSingle();
+    utilization = u as UtilizationRow | null;
+  } catch {
+    // view may not exist yet
+  }
+
+  type StaffMetricsRow = { staff_user_id: string; total_scans: number; valid_count: number; invalid_count: number; flagged_count: number; invalid_ratio_pct: number | null; flagged_ratio_pct: number | null };
+  let staffMetricsRows: StaffMetricsRow[] = [];
+  try {
+    const { data: staffMetrics } = await supabase
+      .from("venue_staff_verification_metrics")
+      .select("staff_user_id, total_scans, valid_count, invalid_count, flagged_count, invalid_ratio_pct, flagged_ratio_pct")
+      .eq("venue_id", venueId);
+    staffMetricsRows = (staffMetrics ?? []) as StaffMetricsRow[];
+  } catch {
+    // view may not exist yet; fall back to existing staffRows
+  }
+
+  type RevenueByTierRow = { tier: string; revenue_cents: number; tx_count: number };
+  let revenueByTierRows: RevenueByTierRow[] = [];
+  try {
+    const { data: revRows } = await supabase
+      .from("venue_revenue_by_tier")
+      .select("tier, revenue_cents, tx_count")
+      .eq("venue_id", venueId);
+    revenueByTierRows = (revRows ?? []) as RevenueByTierRow[];
+  } catch {
+    // view or table may not exist yet
+  }
+
   type HourlyRow = { day: string; hour: number; total_scans: number };
   let hourlyRows: HourlyRow[] = [];
   try {
@@ -248,6 +315,61 @@ export default async function VenueMetricsPage() {
           </div>
         </div>
       </section>
+
+      {(fraudToday !== null || fraud7dInvalidPct !== null) && (
+        <section className="mt-8">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
+            Fraud / invalid scan ratios
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {fraudToday && (
+              <>
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 min-w-0">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Today invalid %</div>
+                  <div className="text-2xl font-semibold text-red-600 dark:text-red-400 mt-1">
+                    {fraudToday.invalid_ratio_pct != null ? `${fraudToday.invalid_ratio_pct}%` : "—"}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 min-w-0">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Today flagged %</div>
+                  <div className="text-2xl font-semibold text-amber-600 dark:text-amber-400 mt-1">
+                    {fraudToday.flagged_ratio_pct != null ? `${fraudToday.flagged_ratio_pct}%` : "—"}
+                  </div>
+                </div>
+              </>
+            )}
+            {fraud7dInvalidPct != null && (
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 min-w-0">
+                <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">7d invalid %</div>
+                <div className="text-2xl font-semibold text-slate-700 dark:text-slate-300 mt-1">{fraud7dInvalidPct}%</div>
+              </div>
+            )}
+            {fraud7dFlaggedPct != null && (
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 min-w-0">
+                <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">7d flagged %</div>
+                <div className="text-2xl font-semibold text-slate-700 dark:text-slate-300 mt-1">{fraud7dFlaggedPct}%</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {utilization !== null && utilization.total_members > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
+            Membership utilization (7d)
+          </h2>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4">
+            <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Members with at least one valid scan</div>
+            <div className="text-2xl font-semibold text-slate-900 dark:text-slate-100 mt-1">
+              {utilization.utilization_7d_pct != null ? `${utilization.utilization_7d_pct}%` : "—"}
+              <span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-2">
+                ({utilization.members_with_scan_7d} / {utilization.total_members} members)
+              </span>
+            </div>
+          </div>
+        </section>
+      )}
 
       {tierUsageRows.length > 0 && (
         <section className="mt-8">
@@ -337,7 +459,7 @@ export default async function VenueMetricsPage() {
 
       <section className="mt-8">
         <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
-          Staff activity (last 7 days)
+          Staff verification metrics
         </h2>
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
           <table className="w-full text-sm">
@@ -355,10 +477,37 @@ export default async function VenueMetricsPage() {
                 <th className="px-4 py-3 text-right font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                   Flagged
                 </th>
+                {staffMetricsRows.length > 0 && staffMetricsRows[0].invalid_ratio_pct != null && (
+                  <>
+                    <th className="px-4 py-3 text-right font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                      Invalid %
+                    </th>
+                    <th className="px-4 py-3 text-right font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                      Flagged %
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
-              {staffRows.length > 0 ? (
+              {staffMetricsRows.length > 0 ? (
+                staffMetricsRows.map((row) => (
+                  <tr key={row.staff_user_id} className="border-b border-slate-100 dark:border-slate-700/50 last:border-0">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">
+                      {truncateId(row.staff_user_id)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{row.total_scans}</td>
+                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">{row.invalid_count}</td>
+                    <td className="px-4 py-3 text-right text-amber-600 dark:text-amber-400">{row.flagged_count}</td>
+                    {row.invalid_ratio_pct != null && (
+                      <>
+                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{row.invalid_ratio_pct}%</td>
+                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{row.flagged_ratio_pct != null ? `${row.flagged_ratio_pct}%` : "—"}</td>
+                      </>
+                    )}
+                  </tr>
+                ))
+              ) : staffRows.length > 0 ? (
                 staffRows.map(({ staff_user_id, total, invalid, flagged }) => (
                   <tr key={staff_user_id} className="border-b border-slate-100 dark:border-slate-700/50 last:border-0">
                     <td className="px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">
@@ -371,7 +520,7 @@ export default async function VenueMetricsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                  <td colSpan={6} className="px-4 py-3 text-slate-500 dark:text-slate-400">
                     —
                   </td>
                 </tr>
@@ -380,6 +529,45 @@ export default async function VenueMetricsPage() {
           </table>
         </div>
       </section>
+
+      {revenueByTierRows.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
+            Revenue attribution by tier
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+            Revenue from venue_transactions linked to membership tier.
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-800/80">
+                  <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                    Tier
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                    Revenue
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                    Transactions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {revenueByTierRows.map(({ tier, revenue_cents, tx_count }) => (
+                  <tr key={tier} className="border-b border-slate-100 dark:border-slate-700/50 last:border-0">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300 capitalize">{tier.replace(/_/g, " ")}</td>
+                    <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">
+                      ${(revenue_cents / 100).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{tx_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

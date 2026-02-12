@@ -126,28 +126,69 @@ export default async function RootPage() {
         </div>
       </section>
 
-      {/* WHY COTERI */}
+      {/* Infrastructure Replacement Layer — displacement, not explanation */}
       <section className="relative z-20 w-full bg-slate-950 border-y border-slate-800 py-24 md:py-32">
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <h2 className="text-2xl md:text-3xl font-semibold tracking-tight text-white mb-10">
-            WHY COTERI
+        <div className="max-w-4xl mx-auto px-6">
+          <h2 className="text-center text-2xl md:text-3xl font-semibold tracking-tight text-white mb-6">
+            Infrastructure Replacement Layer
           </h2>
-          <p className="text-slate-400 mb-8">
-            Most venues rely on fragmented tools:
+          <p className="text-center text-slate-400 mb-14 max-w-2xl mx-auto">
+            Legacy venue stacks are fragmented by design. COTERI replaces them with a unified membership operating layer.
           </p>
-          <ul className="text-slate-400 text-left max-w-sm mx-auto space-y-2 mb-10">
-            <li>• Stripe for payments</li>
-            <li>• Spreadsheets for members</li>
-            <li>• Paper lists at the door</li>
-            <li>• No unified analytics</li>
-          </ul>
-          <p className="text-white font-medium mb-4">
-            COTERI replaces the patchwork with one operating layer.
-          </p>
-          <p className="text-slate-400">
-            Payments. Verification. Insights.<br />
-            All connected. All in real time.
-          </p>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-800">
+              <div className="p-6 sm:p-8">
+                <div className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">Legacy Stack</div>
+                <ul className="space-y-3 text-slate-400 text-sm">
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" aria-hidden />
+                    Stripe
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" aria-hidden />
+                    Spreadsheets
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" aria-hidden />
+                    Door Lists
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" aria-hidden />
+                    POS Notes
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" aria-hidden />
+                    No Analytics
+                  </li>
+                </ul>
+              </div>
+              <div className="p-6 sm:p-8">
+                <div className="text-xs font-semibold uppercase tracking-widest text-indigo-400/90 mb-4">COTERI Layer</div>
+                <ul className="space-y-3 text-slate-200 text-sm font-medium">
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" aria-hidden />
+                    Payments Engine
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" aria-hidden />
+                    Member Graph
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" aria-hidden />
+                    Verification Layer
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" aria-hidden />
+                    Access Ledger
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" aria-hidden />
+                    Venue Intelligence
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -240,20 +281,37 @@ export default async function RootPage() {
         </div>
       </section>
 
-      {/* Built for */}
+      {/* Deployment Surface — network topology, not ICP list */}
       <section className="relative z-20 w-full bg-slate-950 border-y border-slate-800 py-20 md:py-28">
-        <div className="max-w-3xl mx-auto px-6">
-          <h2 className="text-center text-2xl md:text-3xl font-semibold tracking-tight text-white mb-12">
-            Built for:
+        <div className="max-w-4xl mx-auto px-6">
+          <h2 className="text-center text-2xl md:text-3xl font-semibold tracking-tight text-white mb-6">
+            Deployment Surface
           </h2>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-400 text-center sm:text-left">
-            <li>• Music venues</li>
-            <li>• Social clubs</li>
-            <li>• Cultural spaces</li>
-            <li>• Sports facilities</li>
-            <li>• Hospitality groups</li>
-            <li>• Private communities</li>
-          </ul>
+          <p className="text-center text-slate-400 mb-14 max-w-xl mx-auto">
+            COTERI deploys anywhere membership governs access.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[
+              { label: "Cultural Venues", icon: "M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" },
+              { label: "Performance Spaces", icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" },
+              { label: "Private Clubs", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
+              { label: "Athletic Facilities", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
+              { label: "Hospitality Groups", icon: "M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" },
+              { label: "Multi-Location Operators", icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z" },
+            ].map(({ label, icon }) => (
+              <div
+                key={label}
+                className="group flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/30 px-4 py-3 transition-colors hover:border-slate-700 hover:bg-slate-800/30"
+              >
+                <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-indigo-400/80 transition-colors" aria-hidden>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+                  </svg>
+                </span>
+                <span className="text-sm font-medium text-slate-200">{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
