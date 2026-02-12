@@ -54,7 +54,11 @@ export function LandingSignInContent({
   useEffect(() => {
     const error = searchParams.get("error");
     const message = searchParams.get("message");
-    if (error === "auth") setAuthError(message || "Sign-in failed. Try again.");
+    if (error === "auth") {
+      const msg = message || "Sign-in failed. Try again.";
+      const id = setTimeout(() => setAuthError(msg), 0);
+      return () => clearTimeout(id);
+    }
   }, [searchParams]);
 
   const getCallbackUrl = () =>

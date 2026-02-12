@@ -146,9 +146,7 @@ export default async function DashboardPage({
 
   // venue_transactions (drinks) and venue_redemptions — safe when migrations not yet applied (error => 0)
   let drinksToday = 0;
-  let drinksThisWeek = 0;
   let redemptionsToday = 0;
-  let redemptionsThisWeek = 0;
   if (venue?.id && user?.id) {
     const { data: txRows, error: _txErr } = await supabase
       .from("venue_transactions")
@@ -159,8 +157,9 @@ export default async function DashboardPage({
     if (!_txErr && txRows?.length) {
       const txList = txRows as { occurred_at: string; kind: string; quantity: number }[];
       const drinkTx = txList.filter((t) => t.kind === "drink" || t.kind === "drinks");
-      drinksThisWeek = drinkTx.reduce((sum, t) => sum + (t.quantity ?? 1), 0);
+      const _drinksThisWeek = drinkTx.reduce((sum, t) => sum + (t.quantity ?? 1), 0);
       drinksToday = drinkTx.filter((t) => t.occurred_at >= startOfToday).reduce((sum, t) => sum + (t.quantity ?? 1), 0);
+      void _drinksThisWeek;
     }
     const { data: redRows, error: _redErr } = await supabase
       .from("venue_redemptions")
@@ -170,8 +169,9 @@ export default async function DashboardPage({
       .gte("redeemed_at", startOfWeekIso);
     if (!_redErr && redRows?.length !== undefined) {
       const redList = redRows as { redeemed_at: string }[];
-      redemptionsThisWeek = redList.length;
+      const _redemptionsThisWeek = redList.length;
       redemptionsToday = redList.filter((r) => r.redeemed_at >= startOfToday).length;
+      void _redemptionsThisWeek;
     }
   }
 
@@ -212,11 +212,11 @@ export default async function DashboardPage({
               className="group flex flex-col rounded-xl border border-white/10 p-5 transition hover:border-[var(--venue-accent)]/50 hover:bg-white/5"
               style={{ backgroundColor: "var(--venue-bg-elevated)" }}
             >
-              <span className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>Venue data</span>
+              <span className="text-lg font-semibold" style={{ color: "var(--venue-text)" }}>Venue Intelligence</span>
               <span className="mt-1 text-sm" style={{ color: "var(--venue-text-muted)" }}>
-                Scans, verifications, activity
+                Traffic, tier mix, peak hours — real time
               </span>
-              <span className="mt-2 text-sm font-medium group-hover:underline" style={{ color: "var(--venue-accent)" }}>Open metrics →</span>
+              <span className="mt-2 text-sm font-medium group-hover:underline" style={{ color: "var(--venue-accent)" }}>Open intelligence →</span>
             </Link>
             <Link
               href={currentSlug ? `/membership?venue=${encodeURIComponent(currentSlug)}` : "/membership"}

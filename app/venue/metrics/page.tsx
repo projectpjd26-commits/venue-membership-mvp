@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { LiveVerificationCount } from "@/components/venue/LiveVerificationCount";
+import { ScanHeatmap } from "@/components/venue/ScanHeatmap";
 
 function formatDay(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
@@ -55,9 +57,17 @@ export default async function VenueMetricsPage() {
   let valid24h: number | null = null;
   let invalid24h: number | null = null;
   let flagged24h: number | null = null;
+  let todayApproved: number = 0;
 
   try {
-    const [totalRes, validRes, invalidRes, flaggedRes] = await Promise.all([
+    const startOfToday = new Date(now);
+    startOfToday.setUTCHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setUTCDate(startOfTomorrow.getUTCDate() + 1);
+    const todayStart = startOfToday.toISOString();
+    const todayEnd = startOfTomorrow.toISOString();
+
+    const [totalRes, validRes, invalidRes, flaggedRes, dailyView] = await Promise.all([
       supabase
         .from("verification_events")
         .select("id", { count: "exact", head: true })
@@ -81,11 +91,19 @@ export default async function VenueMetricsPage() {
         .eq("venue_id", venueId)
         .not("flag_reason", "is", null)
         .gte("occurred_at", twentyFourHoursAgo),
+      supabase
+        .from("venue_daily_scans")
+        .select("approved_scans")
+        .eq("venue_id", venueId)
+        .gte("day", todayStart)
+        .lt("day", todayEnd)
+        .maybeSingle(),
     ]);
     total24h = totalRes.count ?? null;
     valid24h = validRes.count ?? null;
     invalid24h = invalidRes.count ?? null;
     flagged24h = flaggedRes.count ?? null;
+    todayApproved = (dailyView.data as { approved_scans?: number } | null)?.approved_scans ?? 0;
   } catch {
     // fail closed
   }
@@ -125,6 +143,9 @@ export default async function VenueMetricsPage() {
   type StaffRow = { staff_user_id: string; total: number; invalid: number; flagged: number };
   let staffRows: StaffRow[] = [];
 
+  type TierUsageRow = { tier: string; total_scans: number };
+  let tierUsageRows: TierUsageRow[] = [];
+
   try {
     const { data: events } = await supabase
       .from("verification_events")
@@ -147,20 +168,57 @@ export default async function VenueMetricsPage() {
     // fail closed
   }
 
+  try {
+    const { data: tierRows } = await supabase
+      .from("venue_tier_usage")
+      .select("tier, total_scans")
+      .eq("venue_id", venueId);
+    tierUsageRows = (tierRows ?? []) as TierUsageRow[];
+  } catch {
+    // view may not exist yet
+  }
+
+  type HourlyRow = { day: string; hour: number; total_scans: number };
+  let hourlyRows: HourlyRow[] = [];
+  try {
+    const startOfSevenDaysAgo = new Date(now);
+    startOfSevenDaysAgo.setUTCDate(startOfSevenDaysAgo.getUTCDate() - 7);
+    startOfSevenDaysAgo.setUTCHours(0, 0, 0, 0);
+    const { data: hourlyData } = await supabase
+      .from("venue_daily_hourly_scans")
+      .select("day, hour, total_scans")
+      .eq("venue_id", venueId)
+      .gte("day", startOfSevenDaysAgo.toISOString().slice(0, 10));
+    hourlyRows = (hourlyData ?? []) as HourlyRow[];
+  } catch {
+    // view may not exist yet
+  }
+
   return (
     <main className="p-6 sm:p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
-        Venue metrics
-      </h1>
-      <p className="mt-1 text-slate-600 dark:text-slate-400 text-sm">
-        Venue: <strong>{venueName}</strong>
-      </p>
-      <p className="mt-1 text-slate-500 dark:text-slate-500 text-xs">
-        Read-only operational view. Non-authoritative.
-      </p>
+      <header className="border-b border-slate-200 dark:border-slate-700 pb-6">
+        <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+          Venue Intelligence
+        </h1>
+        <p className="mt-1 text-slate-600 dark:text-slate-400 text-sm">
+          <strong>{venueName}</strong>
+        </p>
+        <p className="mt-1 text-slate-500 dark:text-slate-500 text-xs max-w-xl">
+          Every scan becomes structured data. Traffic, tier mix, and peak hours — all in real time.
+        </p>
+      </header>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-4">
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
+          Live today
+        </h2>
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-4 min-w-0">
+          <LiveVerificationCount venueId={venueId} initialCount={todayApproved} label="Today" />
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
           Last 24 hours
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -191,8 +249,50 @@ export default async function VenueMetricsPage() {
         </div>
       </section>
 
+      {tierUsageRows.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
+            Tier usage (all time)
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+            Scan count by membership tier. e.g. &quot;VIP members account for 42% of visits.&quot;
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-800/80">
+                  <th className="px-4 py-3 text-left font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                    Tier
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                    Scans
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tierUsageRows.map(({ tier, total_scans }) => (
+                  <tr key={tier} className="border-b border-slate-100 dark:border-slate-700/50 last:border-0">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300 capitalize">{tier}</td>
+                    <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-300">{total_scans}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-4">
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
+          Peak hours & heatmap
+        </h2>
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/30 p-4">
+          <ScanHeatmap data={hourlyRows} />
+        </div>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
           Last 7 days (daily)
         </h2>
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
@@ -236,7 +336,7 @@ export default async function VenueMetricsPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-4">
+        <h2 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">
           Staff activity (last 7 days)
         </h2>
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">

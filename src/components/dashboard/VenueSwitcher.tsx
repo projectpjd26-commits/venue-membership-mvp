@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 type Venue = { slug: string; name: string };
@@ -12,7 +11,6 @@ export function VenueSwitcher({
   venues: Venue[];
   currentSlug: string | null;
 }) {
-  const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
   const handleChange = useCallback(

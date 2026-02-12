@@ -9,13 +9,13 @@
 | Flow | Path | Notes |
 |------|------|-------|
 | **Public → Get membership** | `/` → “Get membership” → `/sign-in?next=/join` → auth → `/join` | Preselected venue preserved via `next=/join?venue=slug` (encoded). |
-| **Public → Sign in** | `/` → “Sign in” → `/sign-in` → auth → `/dashboard` | Default post-login is dashboard. |
+| **Public → Sign in** | `/` → “Sign in” → `/sign-in` → auth → `/launch` | Default post-login is `/launch` (venue launcher). |
 | **Dashboard (no membership)** | `/dashboard` → “Get membership” → `/join` | Empty state CTA. |
 | **Join (allowed users)** | `/join` → “Grant me membership” → POST grant → `/dashboard?granted=ok` (via set-venue when next=/dashboard) | Grant API supports `?next=/dashboard` or `?next=/admin`. |
 | **Admin** | Dashboard sidebar “Admin” (if in INTERNAL_DEMO_USER_IDS) → `/admin` | Grant, demo reset; demo-reset redirects to `/admin?reset=ok`. |
 | **Internal demo** | `/internal/demo` — venue picker + wallet links; admins see link to `/admin` | No longer default post-login; manage-access moved to Admin. |
 
-**Auth callback:** Default `next` = `/dashboard`. Reads `next` from URL or `AUTH_NEXT_COOKIE`; path must start with `/` and not `//`.
+**Auth callback:** Default `next` = `/launch`. Reads `next` from URL or `AUTH_NEXT_COOKIE`; path must start with `/` and not `//`.
 
 ---
 
@@ -113,9 +113,29 @@
 
 ---
 
-## 10. Build and routes
+## 10. Venue Intelligence (analytics + realtime)
+
+| Item | Status | Notes |
+|------|--------|------|
+| **Views** | ✓ | `venue_daily_scans`, `venue_tier_usage`, `member_visit_frequency`, `membership_lifetime_visits`, `venue_daily_hourly_scans` (migrations 2025021116*, 2025021117*) |
+| **Realtime** | ✓ | `verification_events` in `supabase_realtime` publication; `LiveVerificationCount` subscribes to INSERTs for venue |
+| **Venue Intelligence page** | ✓ | `/venue/metrics` — rebranded; manager/owner only; today live, 24h, tier usage, peak hours + heatmap, 7d daily, staff |
+| **Heatmap** | ✓ | `ScanHeatmap` uses `venue_daily_hourly_scans` (day, hour, total_scans); peak hours + day×hour grid (UTC) |
+| **Graceful fallback** | ✓ | All view queries in try/catch; missing views → empty data, no crash |
+
+---
+
+## 11. Build and routes
 
 - `npm run build` — all routes compile; no TypeScript errors.
+- `npx tsc --noEmit` — passes.
 - Routes: `/`, `/sign-in`, `/dashboard`, `/membership`, `/join`, `/admin`, `/internal/demo`, `/verify`, `/venue/metrics`, `/auth/callback`, `/auth/logout`, `/api/set-venue`, `/api/internal/demo-grant-membership`, `/api/internal/demo-reset`, `/api/wallet/apple`, `/api/wallet/google`, `/api/stripe/webhook`.
+- **Lint:** `next lint` may fail with “Invalid project directory” (Next.js 16 / eslint-config-next). Use `npx eslint app src --ignore-pattern 'src/app-legacy/**'` to lint active app.
 
-*Last updated: full system review Feb 2025.*
+---
+
+## 12. System debug (Feb 2025)
+
+Full review after splash, Venue Intelligence, and heatmap: **Build** ✓ | **TypeScript** ✓ | **Auth default** doc fixed to `/launch` | **Lint** setState-in-effect and unused-vars fixed in active app; legacy code in `src/app-legacy/` excluded from strict lint.
+
+*Last updated: full system review + Venue Intelligence + debug Feb 2025.*

@@ -5,6 +5,7 @@
  * Not wired to real data.
  */
 export function DashboardMockStats({ venueName }: { venueName?: string | null } = {}) {
+  void venueName; // reserved for venue-scoped heading
   return (
     <section className="mt-6">
       <h2 className="text-sm font-medium mb-3" style={{ color: "var(--venue-text-muted)" }}>

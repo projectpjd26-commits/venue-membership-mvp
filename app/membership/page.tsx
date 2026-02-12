@@ -181,7 +181,8 @@ export default async function MembershipPage({
   const effectiveSlug = slugForDisplay ?? (venueName === 'The Function SF' ? 'the-function-sf' : venueName === 'The Starry Plough' ? 'the-starry-plough' : null)
   const isFunctionSF = venueName === 'The Function SF' || effectiveSlug === 'the-function-sf'
   const isStarryPlough = venueName === 'The Starry Plough' || effectiveSlug === 'the-starry-plough'
-  const displayTier = isActive ? (membership?.tier ?? 'Member') : 'Member'
+  const _displayTier = isActive ? (membership?.tier ?? 'Member') : 'Member';
+  void _displayTier;
   return (
     <main
       className={`venue-theme min-h-screen flex flex-col md:flex-row ${isFunctionSF ? 'venue-blurred-stage' : ''} ${isStarryPlough ? 'venue-theme-starry-plough venue-blurred-pub' : ''}`}

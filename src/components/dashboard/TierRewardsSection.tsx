@@ -50,6 +50,7 @@ export function TierRewardsSection({
   benefitsByTier?: { tier_key: string; benefit_label: string; description?: string | null; sort_order?: number }[];
   venueName?: string | null;
 } = {}) {
+  void venueName; // reserved for venue-scoped copy
   const tiers: TierLevel[] = (() => {
     if (!benefitsByTier?.length) return DEFAULT_TIERS;
     const map = new Map<string, TierBenefit[]>();

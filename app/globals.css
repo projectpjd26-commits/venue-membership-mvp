@@ -190,14 +190,6 @@ body {
   will-change: transform;
 }
 
-/* Splash hero: headline shimmer */
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-.animate-shimmer {
-  animation: shimmer 6s linear infinite;
-}
 
 /* Splash hero: dashboard light sweep */
 @keyframes sweep {
@@ -211,4 +203,78 @@ body {
 /* Splash hero: perspective for 3D tilt */
 .perspective-\[1200px\] {
   perspective: 1200px;
+}
+
+/* Splash hero: GPU-optimized cinematic loop (75s, premium) */
+@keyframes cinematicLoop {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+.animate-cinematic-loop {
+  animation: cinematicLoop 75s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Splash hero: headline one-time sweep (deliberate, not infinite) */
+@keyframes headlineSweep {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.animate-headline-sweep {
+  animation: headlineSweep 3.5s ease forwards;
+}
+
+/* Diagonal clips — refined, more architectural (less aggressive) */
+.clip-left {
+  clip-path: polygon(0 0, 97% 0, 90% 100%, 0% 100%);
+}
+.clip-middle {
+  clip-path: polygon(8% 0, 92% 0, 85% 100%, 15% 100%);
+}
+.clip-right {
+  clip-path: polygon(10% 0, 100% 0, 100% 100%, 3% 100%);
+}
+
+/* Live data flicker — subtle refresh feel */
+@keyframes dataFlicker {
+  0%, 95%, 100% { opacity: 0; }
+  96%, 98% { opacity: 1; }
+}
+.animate-data-flicker {
+  animation: dataFlicker 6s infinite;
+}
+
+/* Foreground particle drift — premium ambient */
+@keyframes particleDrift {
+  0% { transform: translateY(0px); opacity: 0.2; }
+  50% { transform: translateY(-15px); opacity: 0.4; }
+  100% { transform: translateY(0px); opacity: 0.2; }
+}
+@keyframes particleDrift2 {
+  0% { transform: translateY(0px); opacity: 0.15; }
+  50% { transform: translateY(-20px); opacity: 0.3; }
+  100% { transform: translateY(0px); opacity: 0.15; }
+}
+.animate-particle-drift {
+  animation: particleDrift 14s ease-in-out infinite;
+}
+.animate-particle-drift2 {
+  animation: particleDrift2 18s ease-in-out infinite;
+}
+
+/* Section scroll margin for anchor links */
+section {
+  scroll-margin-top: 100px;
+}
+
+/* Optional subtle reveal (wire with intersection observer later) */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.6s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
 }

@@ -54,8 +54,9 @@ export function VerifyClient({ initialUserId, initialResult }: VerifyClientProps
 
   useEffect(() => {
     if (initialResult) {
-      setCheckedAt(new Date())
+      const id = setTimeout(() => setCheckedAt(new Date()), 0)
       haptic(initialResult.valid ? 'success' : 'failure')
+      return () => clearTimeout(id)
     }
   }, [initialResult])
 

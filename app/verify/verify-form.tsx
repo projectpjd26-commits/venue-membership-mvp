@@ -55,11 +55,11 @@ export function VerifyForm({ initialResult, venueName, staffRole, verifyAction }
     if (!result) return;
     const t = setTimeout(() => setMinDisplayMet(true), MIN_DISPLAY_MS);
     return () => clearTimeout(t);
-  }, [result?.verifiedAt, result?.result]);
+  }, [result]);
 
   useEffect(() => {
     if (result && state) setMinDisplayMet(false);
-  }, [state]);
+  }, [result, state]);
 
   const showResult = result && (minDisplayMet || !isPending);
   const tierLabel = result?.tier ? `${result.tier.charAt(0).toUpperCase()}${result.tier.slice(1)} Member` : null;
