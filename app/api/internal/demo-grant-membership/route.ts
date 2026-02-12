@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { PILOT_VENUE_SLUGS } from "@/lib/constants";
-import { requireDemoAdmin } from "@/lib/auth/require-auth";
+import { requireAdmin } from "@/lib/auth/require-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { cookies } from "next/headers";
 
+/** Admin-only: grant the signed-in admin a membership at a venue (for setup or testing). */
 export async function POST(request: Request) {
-  const authResult = await requireDemoAdmin();
+  const authResult = await requireAdmin();
   if (authResult.error) return authResult.error;
   const { session } = authResult.data!;
 

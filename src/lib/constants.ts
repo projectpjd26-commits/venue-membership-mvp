@@ -2,8 +2,9 @@
 export const CURRENT_VENUE_COOKIE = "current_venue_slug";
 
 /**
- * Permanent app admins (co-founders). These emails always have full admin access
- * regardless of INTERNAL_DEMO_USER_IDS. Match is case-insensitive on email.
+ * Permanent app admins (co-founders). Admin identities are linked to sign-in:
+ * - By email: PERMANENT_ADMINS (below)
+ * - By user id: INTERNAL_DEMO_USER_IDS or ADMIN_USER_IDS env (comma-separated)
  * Replace with your and your co-founder's real emails and names.
  */
 export const PERMANENT_ADMINS: { email: string; name: string }[] = [
@@ -21,16 +22,14 @@ export const USER_ROLE_COOKIE = "coteri_user_role";
 export const PILOT_VENUE_SLUGS = ["the-function-sf", "the-starry-plough"] as const;
 
 /**
- * When true: demo reset, demo grant, and /internal/demo are enabled; fallback list includes mock venues.
- * When false or unset: production — demo routes disabled, fallback = pilots only.
- * Set IS_DEMO_MODE=true in env for local/demo deployments.
+ * When true: demo reset and /internal/demo redirect are enabled. Admin grant-membership does not require this.
  */
 export function isDemoMode(): boolean {
   return process.env.IS_DEMO_MODE === "true";
 }
 
-/** Fallback venue list when DB is unavailable. Demo mode: pilots + mock venues; production: pilots only. */
-const FALLBACK_VENUES_DEMO: { name: string; slug: string }[] = [
+/** Fallback venue list when DB is unavailable or for launcher placeholders. Show these; replace with real data as it comes in. */
+const FALLBACK_VENUES_LIST: { name: string; slug: string }[] = [
   { name: "The Function SF", slug: "the-function-sf" },
   { name: "The Starry Plough", slug: "the-starry-plough" },
   { name: "La Rueda", slug: "la-rueda" },
@@ -38,17 +37,12 @@ const FALLBACK_VENUES_DEMO: { name: string; slug: string }[] = [
   { name: "Pacific Greens", slug: "pacific-greens" },
 ];
 
-const FALLBACK_VENUES_PROD: { name: string; slug: string }[] = [
-  { name: "The Function SF", slug: "the-function-sf" },
-  { name: "The Starry Plough", slug: "the-starry-plough" },
-];
-
 export function getFallbackVenues(): { name: string; slug: string }[] {
-  return isDemoMode() ? FALLBACK_VENUES_DEMO : FALLBACK_VENUES_PROD;
+  return FALLBACK_VENUES_LIST;
 }
 
-/** @deprecated Use getFallbackVenues() so production excludes mock venues. */
-export const FALLBACK_VENUES: { name: string; slug: string }[] = FALLBACK_VENUES_DEMO;
+/** @deprecated Use getFallbackVenues(). */
+export const FALLBACK_VENUES: { name: string; slug: string }[] = FALLBACK_VENUES_LIST;
 
 /** Valid venue slug pattern (safe for cookie and URLs). */
 export const VENUE_SLUG_REGEX = /^[a-z0-9-]+$/;

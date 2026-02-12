@@ -32,16 +32,14 @@ export function getRoleForUser(
 }
 
 /**
- * Returns whether the user is an admin (co-founder) with access to all venues.
- * Admin if: email is in PERMANENT_ADMINS (hardcoded) or user id is in INTERNAL_DEMO_USER_IDS (env).
+ * Returns whether the user is an admin with access to all venues.
+ * Admin = linked to sign-in via: PERMANENT_ADMINS (email) or INTERNAL_DEMO_USER_IDS / ADMIN_USER_IDS (user id, comma-separated).
  */
 export function isDashboardAdmin(user: { id: string; email?: string | null }): boolean {
   const email = user.email?.trim().toLowerCase();
   if (email && PERMANENT_ADMIN_EMAILS_LOWER.has(email)) return true;
-  const ids = (process.env.INTERNAL_DEMO_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const idsEnv = process.env.ADMIN_USER_IDS ?? process.env.INTERNAL_DEMO_USER_IDS ?? "";
+  const ids = idsEnv.split(",").map((s) => s.trim()).filter(Boolean);
   return ids.includes(user.id);
 }
 

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CURRENT_VENUE_COOKIE, getFallbackVenues, isDemoMode } from "@/lib/constants";
 import { isDashboardAdmin } from "@/lib/dashboard-auth";
+import { getVenuesWithBanners } from "@/lib/venue-banners";
 import { createServerSupabase } from "@/lib/supabase-server";
-import { VenueBannerGrid } from "./venue-banner-grid";
+import { VenueBannerGrid } from "@/components/venue/VenueBannerGrid";
 
 export default async function InternalDemoPage() {
   if (!isDemoMode()) {
@@ -39,23 +40,8 @@ export default async function InternalDemoPage() {
   const canManageAccess = isDashboardAdmin(user);
 
   const currentVenueSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
-  const VENUE_BANNER_IMAGES: Record<string, string> = {
-    "the-function-sf": "/venues/3.png",
-    "the-starry-plough":
-      "https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=800&q=80",
-    "la-rueda":
-      "https://images.unsplash.com/photo-1613514785940-daed07799d9b?w=800&q=80",
-    "strike-zone":
-      "https://images.unsplash.com/photo-1535223289827-42f1e9919769?w=800&q=80",
-    "pacific-greens":
-      "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=800&q=80",
-  };
   const fallbackVenues = getFallbackVenues();
-  const venueListWithBanners = fallbackVenues.map((v) => ({
-    name: v.name,
-    slug: v.slug,
-    bannerImage: VENUE_BANNER_IMAGES[v.slug] ?? "https://images.unsplash.com/photo-1557683316-973673baf926?w=800&q=80",
-  }));
+  const venueListWithBanners = getVenuesWithBanners(fallbackVenues);
   const currentVenue =
     currentVenueSlug != null
       ? venueListWithBanners.find((v) => v.slug === currentVenueSlug) ?? null

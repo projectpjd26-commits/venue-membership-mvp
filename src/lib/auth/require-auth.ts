@@ -31,15 +31,10 @@ export async function requireAuth(): Promise<AuthResult> {
 }
 
 /**
- * Require authentication and admin (PERMANENT_ADMINS by email or INTERNAL_DEMO_USER_IDS by id).
- * When IS_DEMO_MODE is not true, returns 404 so demo-only routes are disabled in production.
- * Returns 401 if not signed in, 403 if not admin, 404 if demo mode is off.
+ * Require authentication and admin. Admin = PERMANENT_ADMINS (email) or INTERNAL_DEMO_USER_IDS (user id), linked at sign-in.
+ * Use for admin-only actions (e.g. grant self membership, manage access). No demo-mode gate.
  */
-export async function requireDemoAdmin(): Promise<AuthResult> {
-  if (!isDemoMode()) {
-    return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
-  }
-
+export async function requireAdmin(): Promise<AuthResult> {
   const result = await requireAuth();
   if (result.error) return result;
 
@@ -48,4 +43,15 @@ export async function requireDemoAdmin(): Promise<AuthResult> {
   }
 
   return result;
+}
+
+/**
+ * Require authentication and admin, and that IS_DEMO_MODE is true. Use only for demo-specific actions (e.g. demo reset).
+ * Returns 404 when demo mode is off so those routes are disabled in production.
+ */
+export async function requireDemoAdmin(): Promise<AuthResult> {
+  if (!isDemoMode()) {
+    return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  }
+  return requireAdmin();
 }

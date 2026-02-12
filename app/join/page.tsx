@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getFallbackVenues, isDemoMode } from "@/lib/constants";
+import { getFallbackVenues } from "@/lib/constants";
 import { isDashboardAdmin } from "@/lib/dashboard-auth";
 import { createServerSupabase } from "@/lib/supabase-server";
 
@@ -26,7 +26,7 @@ export default async function JoinPage({
     redirect(`/sign-in?next=${encodeURIComponent(nextPath)}`);
   }
 
-  const canGrantSelf = isDashboardAdmin(user) && isDemoMode();
+  const canGrantSelf = isDashboardAdmin(user);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">

@@ -167,3 +167,22 @@ body {
   border: 8px solid transparent;
   border-bottom-color: var(--venue-accent, #d4a853);
 }
+
+/* Splash: moving banner columns preview */
+@keyframes banner-column-up {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+@keyframes banner-column-down {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(0); }
+}
+.banner-column-up {
+  animation: banner-column-up 25s linear infinite;
+}
+.banner-column-down {
+  animation: banner-column-down 28s linear infinite;
+}
+.banner-column-up-slow {
+  animation: banner-column-up 22s linear infinite;
+}

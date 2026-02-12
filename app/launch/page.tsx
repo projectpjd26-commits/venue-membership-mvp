@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { CURRENT_VENUE_COOKIE } from "@/lib/constants";
+import { CURRENT_VENUE_COOKIE, getFallbackVenues } from "@/lib/constants";
 import { allowedVenuesForUser, getRoleForUser, isDashboardAdmin } from "@/lib/dashboard-auth";
+import { getVenuesWithBanners } from "@/lib/venue-banners";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { onlyPilotVenues, withDisplayNames } from "@/lib/venues";
-import { LaunchClient } from "./launch-client";
+import { VenueBannerGrid } from "@/components/venue/VenueBannerGrid";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,8 @@ export default async function LaunchPage() {
   }
 
   const isAdmin = isDashboardAdmin(user);
+
+  // Fetch venues to decide redirect for non-admins
   const { data: memberships } = await supabase
     .from("memberships")
     .select("venue_id, venues(id, name, slug, is_demo)")
@@ -42,36 +45,47 @@ export default async function LaunchPage() {
     fromStaff: fromStaff.map((v) => ({ id: v.id, slug: v.slug, name: v.name })),
   });
   const allVenues = withDisplayNames(allowedOptions.map((v) => ({ slug: v.slug, name: v.name })));
-  const venues = onlyPilotVenues(allVenues);
+  let venues = onlyPilotVenues(allVenues);
+  if (venues.length === 0) {
+    venues = getFallbackVenues();
+  }
+
+  // Non-admin with exactly one venue: send straight to their dashboard (no launcher)
+  if (!isAdmin && venues.length === 1) {
+    redirect(
+      `/api/set-venue?venue=${encodeURIComponent(venues[0].slug)}&next=/dashboard`
+    );
+  }
 
   const rawSlug = cookieStore.get(CURRENT_VENUE_COOKIE)?.value ?? null;
   const currentSlug = rawSlug?.trim() || null;
-  const hasMultipleVenues = venues.length > 1;
   const role = getRoleForUser(user, (staffVenues?.length ?? 0) > 0);
   const firstVenue = venues[0];
-  const currentVenue = currentSlug ? venues.find((v) => v.slug === currentSlug) : firstVenue ?? null;
-  const displayVenue = currentVenue ?? firstVenue;
+  const currentVenueRecord = currentSlug ? venues.find((v) => v.slug === currentSlug) : firstVenue ?? null;
+  const displayVenue = currentVenueRecord ?? firstVenue;
+
+  const venuesWithBanners = getVenuesWithBanners(venues);
+  const currentVenueBanner =
+    currentVenueRecord != null
+      ? venuesWithBanners.find((v) => v.slug === currentVenueRecord.slug) ?? null
+      : venuesWithBanners[0] ?? null;
 
   return (
     <main className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      {/* Banner: venue launcher for admin with multiple venues, or "Your venue" for owner/single */}
+      {/* Banner-style venue launcher with themed images */}
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-        <div className="max-w-3xl mx-auto px-6 py-8 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {hasMultipleVenues && isAdmin
-              ? "Choose your venue"
-              : displayVenue
-                ? `Your venue: ${displayVenue.name}`
-                : "Welcome back"}
+        <div className="max-w-5xl mx-auto px-6 py-10">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white text-center mb-2">
+            COTERI
           </h1>
-          {hasMultipleVenues && isAdmin && (
-            <div className="mt-4 flex justify-center">
-              <LaunchClient
-                venues={venues}
-                currentSlug={currentSlug ?? firstVenue?.slug ?? null}
-              />
-            </div>
-          )}
+          <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-8">
+            Choose a venue to open its dashboard.
+          </p>
+          <VenueBannerGrid
+            venues={venuesWithBanners}
+            currentVenue={isAdmin ? null : currentVenueBanner}
+            adminLayout={isAdmin}
+          />
         </div>
       </header>
 

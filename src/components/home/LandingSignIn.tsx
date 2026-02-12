@@ -48,6 +48,8 @@ export function LandingSignInContent({
   const [sent, setSent] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const isAdminMode = searchParams.get("admin") === "1";
+  const effectiveDefaultNext = isAdminMode ? "/launch" : defaultNext;
 
   useEffect(() => {
     const error = searchParams.get("error");
@@ -59,7 +61,7 @@ export function LandingSignInContent({
     typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : "/auth/callback";
 
   const signInWithOAuth = async (provider: OAuthProvider) => {
-    const next = searchParams.get("next")?.trim() || defaultNext;
+    const next = searchParams.get("next")?.trim() || effectiveDefaultNext;
     document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=${60 * 10}; SameSite=Lax`;
     setOauthLoading(provider);
     setAuthError(null);
@@ -75,7 +77,7 @@ export function LandingSignInContent({
     e.preventDefault();
     if (!email.trim()) return;
     setLoading(true);
-    const next = searchParams.get("next")?.trim() || defaultNext;
+    const next = searchParams.get("next")?.trim() || effectiveDefaultNext;
     document.cookie = `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Path=/; Max-Age=${60 * 10}; SameSite=Lax`;
     const callbackUrl = getCallbackUrl();
     const { error } = await supabase.auth.signInWithOtp({
@@ -109,7 +111,9 @@ export function LandingSignInContent({
           </>
         )}
         {!showHero && (
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Sign in to continue</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {isAdminMode ? "Admin sign-in" : "Sign in to continue"}
+          </p>
         )}
       </div>
 

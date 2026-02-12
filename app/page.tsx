@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerSupabase } from "@/lib/supabase-server";
-import { PreviewCard } from "@/components/PreviewCard";
+import { HeroPreview } from "@/components/HeroPreview";
+import { BannerColumnsPreview } from "@/components/BannerColumnsPreview";
 
 export const dynamic = "force-dynamic";
 
@@ -17,32 +18,54 @@ export default async function RootPage() {
 
   return (
     <>
-      <section className="max-w-6xl mx-auto px-6 py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-slate-900 dark:text-white">
-              Membership Infrastructure for Physical Venues
-            </h1>
-            <p className="mt-6 text-lg text-slate-600 dark:text-slate-400 max-w-xl">
-              Payments, verification, and member access — unified.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/demo"
-                className="inline-flex items-center justify-center rounded-md bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 py-3 font-medium hover:bg-slate-800 dark:hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
-              >
-                Open Demo Venue
-              </Link>
-              <Link
-                href="/venues"
-                className="inline-flex items-center justify-center rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 px-5 py-3 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
-              >
-                For Venues
-              </Link>
-            </div>
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-950 text-white">
+        {/* Ambient Radial Glow */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[900px] h-[900px] bg-indigo-500/10 blur-[180px] rounded-full" />
+        </div>
+
+        {/* Grain Overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.04] mix-blend-overlay pointer-events-none [background-image:radial-gradient(#fff_1px,transparent_1px)] [background-size:4px_4px]"
+          aria-hidden
+        />
+
+        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
+          <h1 className="text-5xl md:text-7xl font-semibold tracking-tight leading-tight">
+            Community and Membership.
+            <span className="block bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+              Operationalized—and Personified.
+            </span>
+          </h1>
+
+          <p className="mt-8 text-lg md:text-xl text-slate-400 max-w-2xl mx-auto">
+            Payments. Verification. Real-world access.
+            Unified infrastructure for physical venues and their communities.
+          </p>
+
+          <div className="mt-12 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/sign-in"
+              className="px-6 py-3 rounded-md bg-white text-black font-medium hover:bg-slate-200 transition shadow-xl focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-slate-950"
+            >
+              Sign in
+            </Link>
+            <Link
+              href="/sign-in"
+              className="px-6 py-3 rounded-md border border-slate-600 text-slate-200 hover:bg-slate-800 transition focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-950"
+            >
+              Create account
+            </Link>
+            <Link
+              href="/sign-in?admin=1"
+              className="px-6 py-3 rounded-md border border-slate-700 text-slate-400 hover:bg-slate-800/80 transition text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 focus:ring-offset-slate-950"
+            >
+              Admin sign-in
+            </Link>
           </div>
-          <div className="opacity-95 transition-opacity duration-300">
-            <PreviewCard />
+
+          <div className="mt-20">
+            <HeroPreview />
           </div>
         </div>
       </section>
@@ -83,6 +106,8 @@ export default async function RootPage() {
           </div>
         </div>
       </section>
+
+      <BannerColumnsPreview />
 
       <section className="max-w-6xl mx-auto px-6 py-24">
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white text-center mb-12">
